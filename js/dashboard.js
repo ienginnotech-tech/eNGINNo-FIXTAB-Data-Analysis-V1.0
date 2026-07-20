@@ -178,6 +178,21 @@ function switchDashboardTab(key) {
   buildDashboard(key);
 }
 
+// รวมยอด Ticket + ค่าใช้จ่าย จาก linkedTickets แบบสด ตาม field ที่ระบุ (Branch Name / Product Name)
+function aggregateBy(rows, field) {
+  const map = {};
+  rows.forEach((r) => {
+    const key = r[field] || "(ไม่ระบุ)";
+    if (!map[key]) map[key] = { count: 0, cost: 0 };
+    map[key].count += 1;
+    map[key].cost += num(r["Total Repair Cost (THB)"]);
+  });
+  const labelField = field === "Branch Name" ? "Branch Name" : "Product Name";
+  return Object.entries(map)
+    .map(([k, v]) => ({ [labelField]: k, "No. of Matched Tickets": v.count, "Total Confirmed Cost (THB)": v.cost }))
+    .sort((a, b) => b["No. of Matched Tickets"] - a["No. of Matched Tickets"]);
+}
+
 // ---------- แท็บรายไฟล์: แสดงตารางดิบทุกตารางที่ parse ได้จากไฟล์นั้น ----------
 function renderFileTab(data, key) {
   const body = document.getElementById("dashboardBody");
@@ -203,6 +218,14 @@ function renderFileTab(data, key) {
       </div>
     </div>`;
 
+  // ไฟล์ Budget Linked: คำนวณ byBranch / byProduct ใหม่สดๆ จาก linkedTickets ที่กรองแล้ว
+  // (แทนตารางสรุปนิ่งจาก Excel) เพื่อให้ตอบสนองตัวกรองปี/เดือนได้จริง
+  let recomputed = null;
+  if (key === "budget_linked" && fileData.linkedTickets && fileData.linkedTickets.length) {
+    const filteredLinked = fileData.linkedTickets.filter(rowPassesFilter);
+    recomputed = { byBranch: aggregateBy(filteredLinked, "Branch Name"), byProduct: aggregateBy(filteredLinked, "Product Name") };
+  }
+
   Object.keys(fileData).forEach((sheetKey) => {
     const allRows = fileData[sheetKey];
     if (!Array.isArray(allRows)) return;
@@ -218,10 +241,22 @@ function renderFileTab(data, key) {
       return;
     }
 
-    const rows = sortTableRows(allRows.filter(rowPassesFilter));
-    const filterNote = rows.length !== allRows.length
-      ? ` — กรองตามช่วงเวลาที่เลือกแล้ว จาก ${allRows.length.toLocaleString()} แถว`
-      : "";
+    let rows, filterNote;
+    if (recomputed && (sheetKey === "byBranch" || sheetKey === "byProduct")) {
+      rows = recomputed[sheetKey];
+      filterNote = (filterYear !== "all" || filterMonth !== "all")
+        ? ` — คำนวณสดจาก linkedTickets ตามช่วงเวลาที่เลือก (ไม่ใช่ตารางนิ่งจากไฟล์ Excel)`
+        : ` — คำนวณสดจาก linkedTickets`;
+    } else if (sheetKey === "dataGaps") {
+      rows = sortTableRows(allRows);
+      filterNote = ` — ⚠️ ไม่มีคอลัมน์วันที่ในไฟล์ต้นฉบับ (เป็น PR/PO ที่หา Ticket จับคู่ไม่เจอ) จึงกรองตามปี/เดือนไม่ได้ แสดงข้อมูลทั้งหมดเสมอ`;
+    } else {
+      rows = sortTableRows(allRows.filter(rowPassesFilter));
+      filterNote = rows.length !== allRows.length
+        ? ` — กรองตามช่วงเวลาที่เลือกแล้ว จาก ${allRows.length.toLocaleString()} แถว`
+        : "";
+    }
+
     html += `<div class="section-title">${sheetKey} (${rows.length.toLocaleString()} แถว${filterNote})</div>`;
     if (!rows.length) {
       html += `<div class="card empty">ไม่มีข้อมูลในช่วงเวลาที่เลือก</div>`;
