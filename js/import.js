@@ -55,41 +55,68 @@ function parseBudgetLinked(wb) {
   const s1 = findSheet(wb, ["Linked Ticket-Cost"]);
   const s2 = findSheet(wb, ["Summary by Branch"]);
   const s3 = findSheet(wb, ["Summary by Product"]);
+  const s4 = findSheet(wb, ["Data Gaps (Unmatched Refs)"]);
+  const s5 = findSheet(wb, ["Methodology & Notes"]);
   return {
     linkedTickets: s1 ? sheetToRowsSkipHeader(wb, s1, 4) : [],
     byBranch: s2 ? sheetToRowsSkipHeader(wb, s2, 4) : [],
     byProduct: s3 ? sheetToRowsSkipHeader(wb, s3, 4) : [],
+    dataGaps: s4 ? sheetToRowsSkipHeader(wb, s4, 4) : [],
+    methodologyNotes: s5 ? sheetToTextLines(wb, s5) : [],
   };
 }
 
+// อ่านชีตที่เป็นข้อความล้วน (ไม่มีตาราง) เอาแค่คอลัมน์ A ทุกแถวที่มีข้อความ
+function sheetToTextLines(wb, sheetName) {
+  const ws = wb.Sheets[sheetName];
+  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+  return raw
+    .map((r) => (r && r[0] !== null && r[0] !== undefined ? String(r[0]) : ""))
+    .filter((line) => line.trim() !== "");
+}
+
 function parseCost2Approaches(wb) {
+  const sComp = findSheet(wb, ["Comparison Summary"]);
   const sCat = findSheet(wb, ["Category Summary"]);
   const sFuzzy = findSheet(wb, ["Fuzzy Matches (Review Needed)"]);
   const sConfirmed = findSheet(wb, ["Confirmed Direct Matches"]);
+  const sMethod = findSheet(wb, ["Methodology & Caveats"]);
   return {
+    comparisonSummary: sComp ? sheetToRowsSkipHeader(wb, sComp, 4) : [],
     categorySummary: sCat ? sheetToRowsSkipHeader(wb, sCat, 4) : [],
     fuzzyMatches: sFuzzy ? sheetToRowsSkipHeader(wb, sFuzzy, 4) : [],
     confirmedMatches: sConfirmed ? sheetToRowsSkipHeader(wb, sConfirmed, 4) : [],
+    methodologyNotes: sMethod ? sheetToTextLines(wb, sMethod) : [],
   };
 }
 
 function parseSelfRepair(wb) {
   const sSummary = findSheet(wb, ["Summary"]);
+  const sAll = findSheet(wb, ["All Tickets Classified"]);
+  const sNoCost = findSheet(wb, ["ซ่อมเองโดยช่างอาคาร (No Cost)"]);
   const sByCat = findSheet(wb, ["By Equipment Category"]);
   return {
     summary: sSummary ? sheetToRowsSkipHeader(wb, sSummary, 4) : [],
+    allTicketsClassified: sAll ? sheetToRowsSkipHeader(wb, sAll, 1) : [],
+    selfRepairNoCost: sNoCost ? sheetToRowsSkipHeader(wb, sNoCost, 3) : [],
     byCategory: sByCat ? sheetToRowsSkipHeader(wb, sByCat, 3) : [],
   };
 }
 
 function parseCapexOpex(wb) {
+  const sReadMe = findSheet(wb, ["อ่านก่อน (Read Me)"]);
   const sKnown = findSheet(wb, ["Threshold Framework (Known)"]);
   const sExt = findSheet(wb, ["Category Threshold (ขยาย)"]);
+  const sPM = findSheet(wb, ["PM Contracts (คัดออก)"]);
   const sClass = findSheet(wb, ["Ticket Classification (v2)"]);
+  const sAboutFood = findSheet(wb, ["About Food - Investigation"]);
   return {
+    readMe: sReadMe ? sheetToTextLines(wb, sReadMe) : [],
     knownAssets: sKnown ? sheetToRowsSkipHeader(wb, sKnown, 3) : [],
     categoryExtended: sExt ? sheetToRowsSkipHeader(wb, sExt, 4) : [],
+    pmContractsExcluded: sPM ? sheetToRowsSkipHeader(wb, sPM, 3) : [],
     classification: sClass ? sheetToRowsSkipHeader(wb, sClass, 3) : [],
+    aboutFoodInvestigation: sAboutFood ? sheetToTextLines(wb, sAboutFood) : [],
   };
 }
 
