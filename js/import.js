@@ -179,7 +179,7 @@ async function handleRawFile(file, meta) {
   setDot(meta.key, "pending");
   try {
     const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: "array" });
+    const wb = XLSX.read(buf, { type: "array", cellDates: true });
     let rowCount = 0;
     wb.SheetNames.forEach((sn) => { rowCount += (sheetToRows(wb, sn) || []).length; });
     setDot(meta.key, "ok");
@@ -195,7 +195,7 @@ async function handleAnalysisFile(file, meta) {
   setDot(meta.key, "pending");
   try {
     const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: "array" });
+    const wb = XLSX.read(buf, { type: "array", cellDates: true });
     const parsed = meta.parser(wb);
     const data = await loadStoredData();
     data[meta.key] = parsed;
