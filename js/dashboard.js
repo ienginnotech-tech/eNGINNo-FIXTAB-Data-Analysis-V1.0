@@ -11,7 +11,15 @@ function getRow(rows, matchFn) {
   return (rows || []).find(matchFn) || null;
 }
 
-function buildDashboard() {
+const DASHBOARD_TABS = [
+  { key: "overview", label: "ภาพรวม" },
+  { key: "budget_linked", label: "1. Budget Linked" },
+  { key: "cost_2approaches", label: "2. Cost 2 Approaches" },
+  { key: "self_repair", label: "3. Self Repair vs Procured" },
+  { key: "capex_opex", label: "4. CAPEX/OPEX Framework" },
+];
+
+function buildDashboard(activeTab) {
   const data = loadStoredData();
   const has = {
     budget_linked: !!data.budget_linked,
@@ -21,6 +29,7 @@ function buildDashboard() {
   };
   const anyData = Object.values(has).some(Boolean);
   const main = document.getElementById("mainContent");
+  const tab = activeTab || "overview";
 
   if (!anyData) {
     main.innerHTML = `
@@ -32,6 +41,84 @@ function buildDashboard() {
       </div>`;
     return;
   }
+
+  // ---- แท็บสลับไฟล์ ----
+  const tabsHTML = `
+    <div class="auth-tabs" style="max-width:640px;margin-bottom:20px">
+      ${DASHBOARD_TABS.map(
+        (t) => `<button class="${tab === t.key ? "active" : ""}" onclick="switchDashboardTab('${t.key}')">${t.label}</button>`
+      ).join("")}
+    </div>`;
+  main.innerHTML = tabsHTML + `<div id="dashboardBody"></div>`;
+
+  if (tab === "overview") {
+    renderOverviewTab(data);
+  } else {
+    renderFileTab(data, tab);
+  }
+}
+
+function switchDashboardTab(key) {
+  buildDashboard(key);
+}
+
+// ---------- แท็บรายไฟล์: แสดงตารางดิบทุกตารางที่ parse ได้จากไฟล์นั้น ----------
+function renderFileTab(data, key) {
+  const body = document.getElementById("dashboardBody");
+  const meta = ANALYSIS_FILES.find((f) => f.key === key);
+  const fileData = data[key];
+
+  if (!fileData) {
+    body.innerHTML = `<div class="card empty">ยังไม่ได้อัปโหลดไฟล์นี้ — ไปที่ <a href="import.html">นำเข้าข้อมูล</a></div>`;
+    return;
+  }
+
+  const fileName = data[key + "_fileName"] || meta.label;
+  const uploadedAt = data[key + "_uploadedAt"] ? new Date(data[key + "_uploadedAt"]).toLocaleString("th-TH") : "-";
+
+  let html = `
+    <div class="topbar">
+      <div><div class="eyebrow">Import Center</div><h2>${meta.label}</h2></div>
+    </div>
+    <div class="card" style="margin-bottom:20px">
+      <div style="font-size:13px;color:var(--text-muted)">
+        ไฟล์: <span class="mono" style="color:var(--text)">${fileName}</span> ·
+        อัปโหลดเมื่อ: <span class="mono" style="color:var(--text)">${uploadedAt}</span>
+      </div>
+    </div>`;
+
+  Object.keys(fileData).forEach((sheetKey) => {
+    const rows = fileData[sheetKey];
+    if (!Array.isArray(rows)) return;
+    html += `<div class="section-title">${sheetKey} (${rows.length.toLocaleString()} แถว)</div>`;
+    if (!rows.length) {
+      html += `<div class="card empty">ไม่มีข้อมูลในตารางนี้</div>`;
+      return;
+    }
+    const cols = Object.keys(rows[0]);
+    html += `<div class="card" style="overflow:auto;max-height:420px"><table><thead><tr>${cols
+      .map((c) => `<th>${c}</th>`)
+      .join("")}</tr></thead><tbody>`;
+    rows.slice(0, 500).forEach((r) => {
+      html += `<tr>${cols.map((c) => `<td>${formatCell(r[c])}</td>`).join("")}</tr>`;
+    });
+    html += `</tbody></table></div>`;
+    if (rows.length > 500) {
+      html += `<div style="font-size:12px;color:var(--text-muted);margin:6px 0 20px 0">แสดง 500 แถวแรกจากทั้งหมด ${rows.length.toLocaleString()} แถว — ใช้ปุ่ม Export ในแท็บภาพรวมเพื่อดึงข้อมูลทั้งหมด</div>`;
+    }
+  });
+
+  body.innerHTML = html;
+}
+
+function formatCell(v) {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "number") return fmtNumber(v);
+  return String(v);
+}
+
+function renderOverviewTab(data) {
+  const body = document.getElementById("dashboardBody");
 
   // ---- KPI คำนวณจากไฟล์ที่มี ----
   let totalTickets = "-", selfRepairPct = "-", confirmedCount = "-", confirmedAmount = "-", capexFlagCount = "-";
@@ -57,7 +144,7 @@ function buildDashboard() {
     capexFlagCount = fmtNumber(flagged.length);
   }
 
-  main.innerHTML = `
+  body.innerHTML = `
     <div class="topbar">
       <div><div class="eyebrow">Dashboard</div><h2>ภาพรวม CAPEX / OPEX</h2></div>
       <div>
