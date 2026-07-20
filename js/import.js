@@ -81,12 +81,16 @@ function parseCost2Approaches(wb) {
   const sFuzzy = findSheet(wb, ["Fuzzy Matches (Review Needed)"]);
   const sConfirmed = findSheet(wb, ["Confirmed Direct Matches"]);
   const sMethod = findSheet(wb, ["Methodology & Caveats"]);
+  const sRawTix = findSheet(wb, ["Raw Tickets by Category"]);
+  const sRawRM = findSheet(wb, ["Raw R&M Transactions (Dated)"]);
   return {
     comparisonSummary: sComp ? sheetToRowsSkipHeader(wb, sComp, 4) : [],
     categorySummary: sCat ? sheetToRowsSkipHeader(wb, sCat, 4) : [],
     fuzzyMatches: sFuzzy ? sheetToRowsSkipHeader(wb, sFuzzy, 4) : [],
     confirmedMatches: sConfirmed ? sheetToRowsSkipHeader(wb, sConfirmed, 4) : [],
     methodologyNotes: sMethod ? sheetToTextLines(wb, sMethod) : [],
+    rawTicketsByCategory: sRawTix ? sheetToRowsSkipHeader(wb, sRawTix, 4) : [],
+    rawRMTransactions: sRawRM ? sheetToRowsSkipHeader(wb, sRawRM, 4) : [],
   };
 }
 
@@ -110,6 +114,8 @@ function parseCapexOpex(wb) {
   const sPM = findSheet(wb, ["PM Contracts (คัดออก)"]);
   const sClass = findSheet(wb, ["Ticket Classification (v2)"]);
   const sAboutFood = findSheet(wb, ["About Food - Investigation"]);
+  const sRawTix = findSheet(wb, ["Raw Tickets by Category"]);
+  const sRawOneoff = findSheet(wb, ["Raw Oneoff Costs (Dated)"]);
   return {
     readMe: sReadMe ? sheetToTextLines(wb, sReadMe) : [],
     knownAssets: sKnown ? sheetToRowsSkipHeader(wb, sKnown, 3) : [],
@@ -117,6 +123,8 @@ function parseCapexOpex(wb) {
     pmContractsExcluded: sPM ? sheetToRowsSkipHeader(wb, sPM, 3) : [],
     classification: sClass ? sheetToRowsSkipHeader(wb, sClass, 3) : [],
     aboutFoodInvestigation: sAboutFood ? sheetToTextLines(wb, sAboutFood) : [],
+    rawTicketsByCategory: sRawTix ? sheetToRowsSkipHeader(wb, sRawTix, 4) : [],
+    rawOneoffCosts: sRawOneoff ? sheetToRowsSkipHeader(wb, sRawOneoff, 4) : [],
   };
 }
 
@@ -244,4 +252,57 @@ async function logUploadToBackend(fileName, fileType, rowCount, note) {
     username: session ? session.username : "unknown",
     fileName, fileType, rowCount, note,
   });
+}
+
+// ---------- ล้างข้อมูล ----------
+
+// ล้างสถานะไฟล์ต้นฉบับ (Input) — รีเซ็ตจุดสถานะกลับเป็น "ยังไม่เลือก" ในหน้าจอปัจจุบัน
+// (ไฟล์ต้นฉบับไม่ได้เก็บถาวรใน localStorage อยู่แล้ว แค่รีเซ็ตหน้าตาบนจอ)
+function clearInputStatus() {
+  if (!confirm("ล้างสถานะไฟล์ต้นฉบับ (Input) ทั้ง 6 รายการ? การอัปโหลดจะเริ่มนับใหม่ในหน้านี้")) return;
+  RAW_FILES.forEach((f) => {
+    setDot(f.key, "pending");
+    const row = document.getElementById(`row_${f.key}`);
+    const tag = row && row.querySelector(".uploaded-tag");
+    if (tag) tag.remove();
+    const input = row && row.querySelector('input[type="file"]');
+    if (input) input.value = "";
+  });
+  const session = getSession();
+  logUploadToBackend("-", "clear_input", 0, `ล้างสถานะ Input โดย ${session ? session.username : "unknown"}`);
+  alert("ล้างสถานะไฟล์ต้นฉบับเรียบร้อย");
+}
+
+// ล้างข้อมูลวิเคราะห์ (Output) — ลบข้อมูลที่ parse ไว้ทั้งหมดออกจาก localStorage
+// มีผลกับหน้า Dashboard โดยตรง (ต้องอัปโหลดไฟล์วิเคราะห์ 4 ไฟล์ใหม่หลังล้าง)
+function clearOutputData() {
+  if (!confirm("ล้างข้อมูลวิเคราะห์ทั้งหมด (Output) ที่ใช้แสดงผลใน Dashboard?\nต้องอัปโหลดไฟล์วิเคราะห์ 4 ไฟล์ใหม่หลังล้าง — ไฟล์จริงในเครื่องคุณไม่หายไปไหน")) return;
+  localStorage.removeItem(DATA_KEY);
+  ANALYSIS_FILES.forEach((f) => {
+    setDot(f.key, "pending");
+    const row = document.getElementById(`row_${f.key}`);
+    const tag = row && row.querySelector(".uploaded-tag");
+    if (tag) tag.remove();
+    const input = row && row.querySelector('input[type="file"]');
+    if (input) input.value = "";
+  });
+  const session = getSession();
+  logUploadToBackend("-", "clear_output", 0, `ล้างข้อมูล Output/Dashboard โดย ${session ? session.username : "unknown"}`);
+  alert("ล้างข้อมูลวิเคราะห์เรียบร้อย — Dashboard จะว่างจนกว่าจะอัปโหลดไฟล์ใหม่");
+}
+
+function clearAllData() {
+  if (!confirm("ล้างข้อมูลทั้งหมด (ทั้ง Input และ Output)? การกระทำนี้ยกเลิกไม่ได้")) return;
+  localStorage.removeItem(DATA_KEY);
+  [...RAW_FILES, ...ANALYSIS_FILES].forEach((f) => {
+    setDot(f.key, "pending");
+    const row = document.getElementById(`row_${f.key}`);
+    const tag = row && row.querySelector(".uploaded-tag");
+    if (tag) tag.remove();
+    const input = row && row.querySelector('input[type="file"]');
+    if (input) input.value = "";
+  });
+  const session = getSession();
+  logUploadToBackend("-", "clear_all", 0, `ล้างข้อมูลทั้งหมดโดย ${session ? session.username : "unknown"}`);
+  alert("ล้างข้อมูลทั้งหมดเรียบร้อย");
 }
