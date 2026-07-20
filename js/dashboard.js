@@ -26,23 +26,57 @@ let filterMonth = "all";
 const THAI_MONTHS = ["01-ม.ค.", "02-ก.พ.", "03-มี.ค.", "04-เม.ย.", "05-พ.ค.", "06-มิ.ย.",
                       "07-ก.ค.", "08-ส.ค.", "09-ก.ย.", "10-ต.ค.", "11-พ.ย.", "12-ธ.ค."];
 
-// พยายามหา field ที่เป็นวันที่ในแถวข้อมูล แล้วคืนค่า {year, month} (month = 1-12) หรือ null ถ้าไม่เจอ
+// พยายามหา field ที่เป็นวันที่ในแถวข้อมูล แล้วคืนค่า {year, month, day, time} หรือ null ถ้าไม่เจอ
 function extractDate(row) {
   for (const key of Object.keys(row)) {
     if (!/date|วันที่|เมื่อ/i.test(key)) continue;
     const v = row[key];
     if (!v) continue;
-    if (v instanceof Date && !isNaN(v)) return { year: v.getFullYear(), month: v.getMonth() + 1 };
+    if (v instanceof Date && !isNaN(v)) {
+      return { year: v.getFullYear(), month: v.getMonth() + 1, day: v.getDate(), time: v.getTime() };
+    }
     if (typeof v === "string") {
       // รูปแบบ dd-mm-yyyy (ที่ใช้ในไฟล์วิเคราะห์ทั้งหมด)
       const m1 = v.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/);
-      if (m1) return { year: parseInt(m1[3]), month: parseInt(m1[2]) };
+      if (m1) {
+        const day = parseInt(m1[1]), month = parseInt(m1[2]), year = parseInt(m1[3]);
+        return { year, month, day, time: new Date(year, month - 1, day).getTime() };
+      }
       // รูปแบบ ISO yyyy-mm-dd
       const m2 = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-      if (m2) return { year: parseInt(m2[1]), month: parseInt(m2[2]) };
+      if (m2) {
+        const year = parseInt(m2[1]), month = parseInt(m2[2]), day = parseInt(m2[3]);
+        return { year, month, day, time: new Date(year, month - 1, day).getTime() };
+      }
     }
   }
   return null;
+}
+
+// หาคอลัมน์ตัวเลขหลักของตาราง เพื่อใช้เรียงจากมากไปน้อยเมื่อไม่มีวันที่
+function findValueKey(row) {
+  const keys = Object.keys(row);
+  const numericKeys = keys.filter((k) => typeof row[k] === "number");
+  if (!numericKeys.length) return null;
+  const priority = /cost|amount|total|count|จำนวน|บาท|ticket|เฉลี่ย|รวม/i;
+  return numericKeys.find((k) => priority.test(k)) || numericKeys[numericKeys.length - 1];
+}
+
+// เรียงข้อมูล: มีวันที่ → ล่าสุดอยู่บนสุด, ไม่มีวันที่ → ค่าตัวเลขหลักมากอยู่บนสุด
+function sortTableRows(rows) {
+  if (!rows.length) return rows;
+  const hasDate = rows.some((r) => extractDate(r));
+  if (hasDate) {
+    return [...rows].sort((a, b) => {
+      const da = extractDate(a), db = extractDate(b);
+      const ta = da ? da.time : -Infinity;
+      const tb = db ? db.time : -Infinity;
+      return tb - ta; // ล่าสุดก่อน
+    });
+  }
+  const key = findValueKey(rows[0]);
+  if (!key) return rows;
+  return [...rows].sort((a, b) => num(b[key]) - num(a[key]));
 }
 
 function collectYears(data) {
@@ -58,7 +92,7 @@ function collectYears(data) {
       });
     });
   });
-  return Array.from(years).sort();
+  return Array.from(years).sort((a, b) => b - a); // ปีล่าสุดอยู่บนสุด
 }
 
 function rowPassesFilter(row) {
@@ -81,7 +115,12 @@ function renderFilterBar(data) {
       <option value="all">ทุกเดือน</option>
       ${THAI_MONTHS.map((m, i) => `<option value="${i + 1}" ${filterMonth == i + 1 ? "selected" : ""}>${m}</option>`).join("")}
     </select>
+    <button class="btn secondary" onclick="refreshDashboard()" title="โหลดข้อมูลล่าสุดจากเครื่องอีกครั้ง">↻ Refresh</button>
   `;
+}
+
+function refreshDashboard() {
+  buildDashboard(currentDashboardTab);
 }
 
 function setFilter(kind, value) {
@@ -179,7 +218,7 @@ function renderFileTab(data, key) {
       return;
     }
 
-    const rows = allRows.filter(rowPassesFilter);
+    const rows = sortTableRows(allRows.filter(rowPassesFilter));
     const filterNote = rows.length !== allRows.length
       ? ` — กรองตามช่วงเวลาที่เลือกแล้ว จาก ${allRows.length.toLocaleString()} แถว`
       : "";
