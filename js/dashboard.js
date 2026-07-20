@@ -131,8 +131,8 @@ function setFilter(kind, value) {
 
 let currentDashboardTab = "overview";
 
-function buildDashboard(activeTab) {
-  const data = loadStoredData();
+async function buildDashboard(activeTab) {
+  const data = await loadStoredData();
   const has = {
     budget_linked: !!data.budget_linked,
     cost_2approaches: !!data.cost_2approaches,
@@ -178,6 +178,57 @@ function switchDashboardTab(key) {
   buildDashboard(key);
 }
 
+// รวมยอดตามหมวดอุปกรณ์จากข้อมูลดิบ (ticket ที่กรองแล้ว + ธุรกรรมต้นทุนที่กรองแล้ว)
+function aggregateCategoryStats(ticketRows, costRows, costKey) {
+  const freq = {};
+  ticketRows.forEach((r) => { const c = r["category"]; if (!c) return; freq[c] = (freq[c] || 0) + 1; });
+  const cost = {}, costCount = {};
+  costRows.forEach((r) => {
+    const c = r["category"]; if (!c) return;
+    cost[c] = (cost[c] || 0) + num(r[costKey]);
+    costCount[c] = (costCount[c] || 0) + 1;
+  });
+  const categories = new Set([...Object.keys(freq), ...Object.keys(cost)]);
+  return Array.from(categories).map((c) => ({
+    category: c,
+    ticket_count: freq[c] || 0,
+    cost_count: costCount[c] || 0,
+    total_cost: cost[c] || 0,
+    avg_cost: costCount[c] ? (cost[c] || 0) / costCount[c] : 0,
+  })).sort((a, b) => b.total_cost - a.total_cost);
+}
+
+function recomputeCategorySummary(fileData) {
+  const stats = aggregateCategoryStats(fileData.rawTicketsByCategory, fileData.rawRMTransactions, "NETAMOUNT (Baht)");
+  return stats.map((s) => ({
+    "หมวดอุปกรณ์": s.category,
+    "จำนวน Ticket (Fixtab)": s.ticket_count,
+    "ค่าใช้จ่ายที่ระบุหมวดได้ (บาท)": s.total_cost,
+    "ค่าเฉลี่ย/Ticket (บาท)": s.ticket_count ? Math.round(s.total_cost / s.ticket_count) : 0,
+  }));
+}
+
+function recomputeCategoryThreshold(fileData, originalCategoryExtended) {
+  const stats = aggregateCategoryStats(fileData.rawTicketsByCategory, fileData.rawOneoffCosts, "NETAMOUNT (Baht)");
+  const refMap = {};
+  (originalCategoryExtended || []).forEach((r) => { refMap[r["หมวดอุปกรณ์"]] = r["ราคาเครื่องใหม่โดยประมาณ (บาท) [ต้องกรอก]"]; });
+  return stats.map((s) => {
+    const refPrice = refMap[s.category] || null;
+    const pct = refPrice ? s.avg_cost / refPrice : null;
+    const reco = !refPrice ? "รอราคาเครื่องใหม่" : (pct >= 0.3 ? "เข้าเกณฑ์พิจารณา CAPEX" : "OPEX ปกติ");
+    return {
+      "หมวดอุปกรณ์": s.category,
+      "จำนวน Ticket": s.ticket_count,
+      "จำนวนครั้งที่ซ่อม (มี PR/PO)": s.cost_count,
+      "ค่าซ่อมรวม (บาท)": s.total_cost,
+      "ค่าซ่อมเฉลี่ย/ครั้ง (บาท)": Math.round(s.avg_cost),
+      "ราคาเครื่องใหม่โดยประมาณ (บาท) [ต้องกรอก]": refPrice,
+      "% เทียบราคาใหม่": pct,
+      "คำแนะนำเบื้องต้น": reco,
+    };
+  });
+}
+
 // รวมยอด Ticket + ค่าใช้จ่าย จาก linkedTickets แบบสด ตาม field ที่ระบุ (Branch Name / Product Name)
 function aggregateBy(rows, field) {
   const map = {};
@@ -219,11 +270,24 @@ function renderFileTab(data, key) {
     </div>`;
 
   // ไฟล์ Budget Linked: คำนวณ byBranch / byProduct ใหม่สดๆ จาก linkedTickets ที่กรองแล้ว
-  // (แทนตารางสรุปนิ่งจาก Excel) เพื่อให้ตอบสนองตัวกรองปี/เดือนได้จริง
   let recomputed = null;
   if (key === "budget_linked" && fileData.linkedTickets && fileData.linkedTickets.length) {
     const filteredLinked = fileData.linkedTickets.filter(rowPassesFilter);
     recomputed = { byBranch: aggregateBy(filteredLinked, "Branch Name"), byProduct: aggregateBy(filteredLinked, "Product Name") };
+  }
+  // ไฟล์ Cost 2 Approaches: คำนวณ Category Summary ใหม่สดๆ จากข้อมูลดิบที่กรองแล้ว
+  let recomputedCat2 = null;
+  if (key === "cost_2approaches" && fileData.rawTicketsByCategory && fileData.rawTicketsByCategory.length) {
+    const ft = fileData.rawTicketsByCategory.filter(rowPassesFilter);
+    const fc = (fileData.rawRMTransactions || []).filter(rowPassesFilter);
+    recomputedCat2 = recomputeCategorySummary({ rawTicketsByCategory: ft, rawRMTransactions: fc });
+  }
+  // ไฟล์ CAPEX/OPEX: คำนวณ Category Threshold ใหม่สดๆ จากข้อมูลดิบที่กรองแล้ว
+  let recomputedThreshold = null;
+  if (key === "capex_opex" && fileData.rawTicketsByCategory && fileData.rawTicketsByCategory.length) {
+    const ft = fileData.rawTicketsByCategory.filter(rowPassesFilter);
+    const fc = (fileData.rawOneoffCosts || []).filter(rowPassesFilter);
+    recomputedThreshold = recomputeCategoryThreshold({ rawTicketsByCategory: ft, rawOneoffCosts: fc }, fileData.categoryExtended);
   }
 
   Object.keys(fileData).forEach((sheetKey) => {
@@ -247,6 +311,16 @@ function renderFileTab(data, key) {
       filterNote = (filterYear !== "all" || filterMonth !== "all")
         ? ` — คำนวณสดจาก linkedTickets ตามช่วงเวลาที่เลือก (ไม่ใช่ตารางนิ่งจากไฟล์ Excel)`
         : ` — คำนวณสดจาก linkedTickets`;
+    } else if (recomputedCat2 && sheetKey === "categorySummary") {
+      rows = recomputedCat2;
+      filterNote = (filterYear !== "all" || filterMonth !== "all")
+        ? ` — คำนวณสดจากข้อมูลดิบตามช่วงเวลาที่เลือก`
+        : ` — คำนวณสดจากข้อมูลดิบ`;
+    } else if (recomputedThreshold && sheetKey === "categoryExtended") {
+      rows = recomputedThreshold;
+      filterNote = (filterYear !== "all" || filterMonth !== "all")
+        ? ` — คำนวณสดจากข้อมูลดิบตามช่วงเวลาที่เลือก`
+        : ` — คำนวณสดจากข้อมูลดิบ`;
     } else if (sheetKey === "dataGaps") {
       rows = sortTableRows(allRows);
       filterNote = ` — ⚠️ ไม่มีคอลัมน์วันที่ในไฟล์ต้นฉบับ (เป็น PR/PO ที่หา Ticket จับคู่ไม่เจอ) จึงกรองตามปี/เดือนไม่ได้ แสดงข้อมูลทั้งหมดเสมอ`;
@@ -311,7 +385,16 @@ function renderOverviewTab(data) {
   confirmedCount = fmtNumber(filteredLinked.length);
   confirmedAmount = fmtNumber(filteredLinked.reduce((a, r) => a + num(r["Total Repair Cost (THB)"]), 0));
 
-  if (data.capex_opex && data.capex_opex.categoryExtended) {
+  const canFilterCategory = data.cost_2approaches && data.cost_2approaches.rawTicketsByCategory && data.cost_2approaches.rawTicketsByCategory.length;
+  const canFilterThreshold = data.capex_opex && data.capex_opex.rawTicketsByCategory && data.capex_opex.rawTicketsByCategory.length;
+
+  let thresholdRowsForKPI = null;
+  if (canFilterThreshold) {
+    const ft = data.capex_opex.rawTicketsByCategory.filter(rowPassesFilter);
+    const fc = (data.capex_opex.rawOneoffCosts || []).filter(rowPassesFilter);
+    thresholdRowsForKPI = recomputeCategoryThreshold({ rawTicketsByCategory: ft, rawOneoffCosts: fc }, data.capex_opex.categoryExtended);
+    capexFlagCount = fmtNumber(thresholdRowsForKPI.filter((r) => (r["คำแนะนำเบื้องต้น"] || "").includes("CAPEX")).length);
+  } else if (data.capex_opex && data.capex_opex.categoryExtended) {
     const flagged = data.capex_opex.categoryExtended.filter(
       (r) => (r["คำแนะนำเบื้องต้น"] || "").includes("CAPEX")
     );
@@ -349,7 +432,7 @@ function renderOverviewTab(data) {
       <div class="card kpi warn">
         <div class="label">หมวดที่เข้าเกณฑ์ CAPEX</div>
         <div class="value">${capexFlagCount}</div>
-        <div class="sub">จาก Category Threshold (ทั้งช่วงเวลา)</div>
+        <div class="sub">${canFilterThreshold ? "กรองตามช่วงเวลาที่เลือก" : "จาก Category Threshold (ทั้งช่วงเวลา)"}</div>
       </div>
     </div>
 
@@ -363,12 +446,12 @@ function renderOverviewTab(data) {
       </div>
     </div>
 
-    <div class="section-title">ค่าซ่อมต่อครั้ง แยกตามหมวดอุปกรณ์ (ไม่รวมสัญญา PM รายปี) — ข้อมูลทั้งช่วงเวลา ไฟล์ต้นทางไม่มีวันที่ระดับหมวด จึงกรองไม่ได้</div>
+    <div class="section-title">ค่าซ่อมต่อครั้ง แยกตามหมวดอุปกรณ์ (ไม่รวมสัญญา PM รายปี)${canFilterThreshold ? (filtering ? " — กรองตามช่วงเวลาที่เลือก" : "") : " — ข้อมูลทั้งช่วงเวลา (ไฟล์นี้ยังไม่มีข้อมูลดิบพร้อมวันที่)"}</div>
     <div class="card">
       <canvas id="chartCategory" height="110"></canvas>
     </div>
 
-    <div class="section-title">เกณฑ์ CAPEX vs OPEX รายหมวดอุปกรณ์ — ข้อมูลทั้งช่วงเวลา</div>
+    <div class="section-title">เกณฑ์ CAPEX vs OPEX รายหมวดอุปกรณ์${canFilterThreshold ? (filtering ? " — กรองตามช่วงเวลาที่เลือก" : "") : " — ข้อมูลทั้งช่วงเวลา"}</div>
     <div class="card" style="overflow:auto">
       <table id="tblThreshold">
         <thead><tr><th>หมวดอุปกรณ์</th><th>Ticket</th><th>ค่าซ่อมเฉลี่ย/ครั้ง</th><th>ราคาเครื่องใหม่</th><th>%</th><th>คำแนะนำ</th></tr></thead>
@@ -378,8 +461,19 @@ function renderOverviewTab(data) {
   `;
 
   renderClassification(data, filteredTickets);
-  renderCategoryChart(data);
-  renderThresholdTable(data);
+
+  // กราฟ Category: ใช้ข้อมูลดิบที่กรองแล้วถ้ามี ไม่งั้น fallback เป็นตารางสรุปนิ่งทั้งช่วงเวลา
+  // กราฟ Category "ไม่รวมสัญญา PM รายปี" — ควรใช้ข้อมูลจากไฟล์ CAPEX/OPEX (คัด PM ออกแล้ว) เป็นหลัก
+  // ถ้าไม่มีไฟล์นั้น ค่อย fallback ไปใช้ cost_2approaches (ซึ่งรวม PM ด้วย — จะมีหมายเหตุกำกับให้ชัดเจน)
+  let catRowsForChart = thresholdRowsForKPI;
+  if (!catRowsForChart && canFilterCategory) {
+    const ft = data.cost_2approaches.rawTicketsByCategory.filter(rowPassesFilter);
+    const fc = (data.cost_2approaches.rawRMTransactions || []).filter(rowPassesFilter);
+    catRowsForChart = recomputeCategorySummary({ rawTicketsByCategory: ft, rawRMTransactions: fc });
+  }
+  renderCategoryChart(data, catRowsForChart);
+
+  renderThresholdTable(data, thresholdRowsForKPI);
 }
 
 function renderClassification(data, filteredTickets) {
@@ -430,14 +524,17 @@ function renderClassification(data, filteredTickets) {
   });
 }
 
-function renderCategoryChart(data) {
-  let rows = data.capex_opex && data.capex_opex.categoryExtended ? data.capex_opex.categoryExtended : [];
-  if (!rows.length && data.cost_2approaches) rows = data.cost_2approaches.categorySummary || [];
+function renderCategoryChart(data, overrideRows) {
+  let rows = overrideRows;
+  if (!rows) {
+    rows = data.capex_opex && data.capex_opex.categoryExtended ? data.capex_opex.categoryExtended : [];
+    if (!rows.length && data.cost_2approaches) rows = data.cost_2approaches.categorySummary || [];
+  }
   if (!rows.length) return;
 
   rows = rows.filter((r) => r["หมวดอุปกรณ์"] || r["category"]);
   const labels = rows.map((r) => r["หมวดอุปกรณ์"] || r["category"]);
-  const values = rows.map((r) => num(r["ค่าซ่อมรวม (บาท)"] ?? r["tagged_rm_cost"] ?? r["total_cost"]));
+  const values = rows.map((r) => num(r["ค่าซ่อมรวม (บาท)"] ?? r["ค่าใช้จ่ายที่ระบุหมวดได้ (บาท)"] ?? r["tagged_rm_cost"] ?? r["total_cost"]));
 
   new Chart(document.getElementById("chartCategory"), {
     type: "bar",
@@ -453,8 +550,8 @@ function renderCategoryChart(data) {
   });
 }
 
-function renderThresholdTable(data) {
-  const rows = data.capex_opex ? data.capex_opex.categoryExtended : [];
+function renderThresholdTable(data, overrideRows) {
+  const rows = overrideRows || (data.capex_opex ? data.capex_opex.categoryExtended : []);
   const tbody = document.querySelector("#tblThreshold tbody");
   if (!rows || !rows.length) {
     tbody.innerHTML = `<tr><td colspan="6" class="empty">ไม่มีข้อมูล — อัปโหลดไฟล์ Fixtab_CAPEX_OPEX_Framework.xlsx</td></tr>`;
@@ -481,14 +578,14 @@ function renderThresholdTable(data) {
 }
 
 // ---------- Export ----------
-function exportCombinedJSON() {
-  const data = loadStoredData();
+async function exportCombinedJSON() {
+  const data = await loadStoredData();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   downloadBlob(blob, "fixtab_dashboard_export.json");
 }
 
-function exportCombinedCSV() {
-  const data = loadStoredData();
+async function exportCombinedCSV() {
+  const data = await loadStoredData();
   const rows = (data.capex_opex && data.capex_opex.categoryExtended) || [];
   if (!rows.length) { alert("ไม่มีข้อมูลตารางหมวดอุปกรณ์ให้ export"); return; }
   const headers = Object.keys(rows[0]);
