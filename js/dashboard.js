@@ -251,11 +251,19 @@ function formatCell(v) {
 
 function renderOverviewTab(data) {
   const body = document.getElementById("dashboardBody");
+  const filtering = filterYear !== "all" || filterMonth !== "all";
 
-  // ---- KPI คำนวณจากไฟล์ที่มี ----
+  // ---- KPI: คำนวณจากข้อมูลระดับ Ticket ดิบ (มีวันที่) จะได้กรองตามปี/เดือนได้จริง ----
   let totalTickets = "-", selfRepairPct = "-", confirmedCount = "-", confirmedAmount = "-", capexFlagCount = "-";
 
-  if (data.self_repair && data.self_repair.summary) {
+  const rawTickets = data.self_repair && data.self_repair.allTicketsClassified ? data.self_repair.allTicketsClassified : [];
+  const filteredTickets = rawTickets.filter(rowPassesFilter);
+  if (rawTickets.length) {
+    totalTickets = fmtNumber(filteredTickets.length);
+    const selfCount = filteredTickets.filter((r) => (r["กลุ่ม"] || "").includes("ช่างอาคารเอง")).length;
+    selfRepairPct = filteredTickets.length ? ((selfCount / filteredTickets.length) * 100).toFixed(1) + "%" : "0%";
+  } else if (data.self_repair && data.self_repair.summary) {
+    // เผื่อไฟล์เก่าที่ยังไม่มีชีต All Tickets Classified — ใช้ตัวเลขรวมทั้งช่วงแทน (กรองไม่ได้)
     const s = data.self_repair.summary;
     const total = s.reduce((a, r) => a + num(r["จำนวน Ticket"] ?? r["count"]), 0);
     const selfRow = getRow(s, (r) => (r["กลุ่ม"] || "").includes("ช่างอาคารเอง"));
@@ -263,11 +271,10 @@ function renderOverviewTab(data) {
     if (selfRow) selfRepairPct = num(selfRow["% ของ Ticket ที่เสร็จแล้ว (3,631)"] ?? selfRow["pct"]) + "%";
   }
 
-  if (data.budget_linked && data.budget_linked.linkedTickets) {
-    const rows = data.budget_linked.linkedTickets.filter((r) => r["Ticket Number"]);
-    confirmedCount = fmtNumber(rows.length);
-    confirmedAmount = fmtNumber(rows.reduce((a, r) => a + num(r["Total Repair Cost (THB)"]), 0));
-  }
+  const linkedRows = (data.budget_linked && data.budget_linked.linkedTickets ? data.budget_linked.linkedTickets : []).filter((r) => r["Ticket Number"]);
+  const filteredLinked = linkedRows.filter(rowPassesFilter);
+  confirmedCount = fmtNumber(filteredLinked.length);
+  confirmedAmount = fmtNumber(filteredLinked.reduce((a, r) => a + num(r["Total Repair Cost (THB)"]), 0));
 
   if (data.capex_opex && data.capex_opex.categoryExtended) {
     const flagged = data.capex_opex.categoryExtended.filter(
@@ -278,7 +285,10 @@ function renderOverviewTab(data) {
 
   body.innerHTML = `
     <div class="topbar">
-      <div><div class="eyebrow">Dashboard</div><h2>ภาพรวม CAPEX / OPEX</h2></div>
+      <div>
+        <div class="eyebrow">Dashboard</div>
+        <h2>ภาพรวม CAPEX / OPEX ${filtering ? `<span class="badge pending" style="vertical-align:middle;margin-left:8px">กรองอยู่: ${filterYear !== "all" ? "ปี " + filterYear : "ทุกปี"} / ${filterMonth !== "all" ? THAI_MONTHS[filterMonth - 1] : "ทุกเดือน"}</span>` : ""}</h2>
+      </div>
       <div>
         <button class="btn secondary" onclick="exportCombinedCSV()">⬇ Export CSV รวม</button>
         <button class="btn" onclick="exportCombinedJSON()">⬇ Export JSON รวม</button>
@@ -289,7 +299,7 @@ function renderOverviewTab(data) {
       <div class="card kpi">
         <div class="label">Ticket ที่วิเคราะห์แล้ว</div>
         <div class="value">${totalTickets}</div>
-        <div class="sub">จากไฟล์ SelfRepair_vs_Procured</div>
+        <div class="sub">${rawTickets.length ? "กรองตามช่วงเวลาที่เลือก" : "จากไฟล์ SelfRepair_vs_Procured"}</div>
       </div>
       <div class="card kpi warn">
         <div class="label">ซ่อมเองโดยช่างอาคาร</div>
@@ -299,16 +309,16 @@ function renderOverviewTab(data) {
       <div class="card kpi ok">
         <div class="label">Ticket ที่ยืนยันค่าใช้จ่ายตรง</div>
         <div class="value">${confirmedCount}</div>
-        <div class="sub">รวม ${confirmedAmount} บาท</div>
+        <div class="sub">รวม ${confirmedAmount} บาท${filtering ? " (ตามช่วงที่กรอง)" : ""}</div>
       </div>
       <div class="card kpi warn">
         <div class="label">หมวดที่เข้าเกณฑ์ CAPEX</div>
         <div class="value">${capexFlagCount}</div>
-        <div class="sub">จาก Category Threshold</div>
+        <div class="sub">จาก Category Threshold (ทั้งช่วงเวลา)</div>
       </div>
     </div>
 
-    <div class="section-title">การจำแนกลักษณะ Ticket ที่ซ่อมเสร็จ</div>
+    <div class="section-title">การจำแนกลักษณะ Ticket ที่ซ่อมเสร็จ${filtering && rawTickets.length ? " (ตามช่วงเวลาที่กรอง)" : ""}</div>
     <div class="grid cols-2">
       <div class="card">
         <canvas id="chartClassification" height="220"></canvas>
@@ -318,12 +328,12 @@ function renderOverviewTab(data) {
       </div>
     </div>
 
-    <div class="section-title">ค่าซ่อมต่อครั้ง แยกตามหมวดอุปกรณ์ (ไม่รวมสัญญา PM รายปี)</div>
+    <div class="section-title">ค่าซ่อมต่อครั้ง แยกตามหมวดอุปกรณ์ (ไม่รวมสัญญา PM รายปี) — ข้อมูลทั้งช่วงเวลา ไฟล์ต้นทางไม่มีวันที่ระดับหมวด จึงกรองไม่ได้</div>
     <div class="card">
       <canvas id="chartCategory" height="110"></canvas>
     </div>
 
-    <div class="section-title">เกณฑ์ CAPEX vs OPEX รายหมวดอุปกรณ์</div>
+    <div class="section-title">เกณฑ์ CAPEX vs OPEX รายหมวดอุปกรณ์ — ข้อมูลทั้งช่วงเวลา</div>
     <div class="card" style="overflow:auto">
       <table id="tblThreshold">
         <thead><tr><th>หมวดอุปกรณ์</th><th>Ticket</th><th>ค่าซ่อมเฉลี่ย/ครั้ง</th><th>ราคาเครื่องใหม่</th><th>%</th><th>คำแนะนำ</th></tr></thead>
@@ -332,19 +342,34 @@ function renderOverviewTab(data) {
     </div>
   `;
 
-  renderClassification(data);
+  renderClassification(data, filteredTickets);
   renderCategoryChart(data);
   renderThresholdTable(data);
 }
 
-function renderClassification(data) {
-  const rows = (data.capex_opex && data.capex_opex.classification && data.capex_opex.classification.length)
-    ? data.capex_opex.classification
-    : (data.self_repair ? data.self_repair.summary : []);
-  if (!rows || !rows.length) return;
+function renderClassification(data, filteredTickets) {
+  let labelKey, countKey, rows;
 
-  const labelKey = rows[0]["กลุ่ม"] !== undefined ? "กลุ่ม" : "repair_class";
-  const countKey = Object.keys(rows[0]).find((k) => k.includes("จำนวน")) || "count";
+  if (filteredTickets && filteredTickets.length) {
+    // คำนวณสดจาก Ticket ดิบที่กรองแล้ว (รองรับตัวกรองปี/เดือนจริง)
+    const counts = {};
+    filteredTickets.forEach((r) => {
+      const g = r["กลุ่ม"] || "ไม่ระบุ";
+      counts[g] = (counts[g] || 0) + 1;
+    });
+    const total = filteredTickets.length;
+    rows = Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([g, c]) => ({ กลุ่ม: g, จำนวน: c, "%": ((c / total) * 100).toFixed(1) + "%" }));
+    labelKey = "กลุ่ม"; countKey = "จำนวน";
+  } else {
+    rows = (data.capex_opex && data.capex_opex.classification && data.capex_opex.classification.length)
+      ? data.capex_opex.classification
+      : (data.self_repair ? data.self_repair.summary : []);
+    if (!rows || !rows.length) return;
+    labelKey = rows[0]["กลุ่ม"] !== undefined ? "กลุ่ม" : "repair_class";
+    countKey = Object.keys(rows[0]).find((k) => k.includes("จำนวน")) || "count";
+  }
 
   const tbody = document.querySelector("#tblClassification tbody");
   const palette = ["#3FA796", "#5B8DEF", "#E8A33D", "#8A97A6", "#D9685F", "#B98CE0", "#4FC3E0", "#E0A24F", "#7A8CFF"];
