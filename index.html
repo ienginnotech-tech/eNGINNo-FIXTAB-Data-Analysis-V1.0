@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PSD_eNGINNo FIXTAB Analysis V1.0 — เข้าสู่ระบบ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="tag">PSD_eNGINNo · FIXTAB ANALYSIS</div>
+      <h1 id="cardTitle">เข้าสู่ระบบ</h1>
+
+      <div class="auth-tabs">
+        <button id="tabLogin" class="active" onclick="switchTab('login')">เข้าสู่ระบบ</button>
+        <button id="tabRegister" onclick="switchTab('register')">สมัครสมาชิก</button>
+      </div>
+
+      <form id="loginForm" onsubmit="handleLogin(event)">
+        <div class="field">
+          <label>ชื่อผู้ใช้</label>
+          <input type="text" id="loginUsername" required autocomplete="username" />
+        </div>
+        <div class="field">
+          <label>รหัสผ่าน</label>
+          <input type="password" id="loginPassword" required autocomplete="current-password" />
+        </div>
+        <button type="submit" class="btn" style="width:100%">เข้าสู่ระบบ</button>
+      </form>
+
+      <form id="registerForm" onsubmit="handleRegister(event)" style="display:none">
+        <div class="field">
+          <label>ชื่อผู้ใช้ที่ต้องการ</label>
+          <input type="text" id="regUsername" required />
+        </div>
+        <div class="field">
+          <label>ตั้งรหัสผ่าน</label>
+          <input type="password" id="regPassword" required />
+        </div>
+        <button type="submit" class="btn" style="width:100%">ส่งคำขอสมัครสมาชิก</button>
+      </form>
+
+      <div id="msgBox"></div>
+
+      <div class="divider"></div>
+      <div style="font-size:12px;color:var(--text-muted)">
+        บัญชีใหม่ต้องรอผู้ดูแลระบบอนุมัติก่อนจึงจะเข้าใช้งานได้<br/>
+        ผู้ดูแลระบบเริ่มต้น: <span class="mono">admin</span>
+      </div>
+    </div>
+  </div>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script>
+  // ถ้า login ค้างอยู่แล้ว ให้พาไป dashboard ทันที
+  if (getSession()) window.location.href = "dashboard.html";
+
+  function switchTab(tab) {
+    document.getElementById("tabLogin").classList.toggle("active", tab === "login");
+    document.getElementById("tabRegister").classList.toggle("active", tab === "register");
+    document.getElementById("loginForm").style.display = tab === "login" ? "block" : "none";
+    document.getElementById("registerForm").style.display = tab === "register" ? "block" : "none";
+    document.getElementById("cardTitle").textContent = tab === "login" ? "เข้าสู่ระบบ" : "สมัครสมาชิก";
+    document.getElementById("msgBox").innerHTML = "";
+  }
+
+  function showMsg(text, type) {
+    document.getElementById("msgBox").innerHTML = `<div class="msg ${type}">${text}</div>`;
+  }
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    const btn = e.target.querySelector("button");
+    btn.disabled = true; btn.textContent = "กำลังตรวจสอบ...";
+    const username = document.getElementById("loginUsername").value.trim();
+    const password = document.getElementById("loginPassword").value;
+    const res = await doLogin(username, password);
+    btn.disabled = false; btn.textContent = "เข้าสู่ระบบ";
+    if (res.ok) {
+      window.location.href = "dashboard.html";
+    } else {
+      showMsg(res.error || "เข้าสู่ระบบไม่สำเร็จ", "error");
+    }
+  }
+
+  async function handleRegister(e) {
+    e.preventDefault();
+    const btn = e.target.querySelector("button");
+    btn.disabled = true; btn.textContent = "กำลังส่งคำขอ...";
+    const username = document.getElementById("regUsername").value.trim();
+    const password = document.getElementById("regPassword").value;
+    const res = await doRegister(username, password);
+    btn.disabled = false; btn.textContent = "ส่งคำขอสมัครสมาชิก";
+    if (res.ok) {
+      showMsg(res.message || "สมัครสำเร็จ รอการอนุมัติ", "success");
+      document.getElementById("registerForm").reset();
+    } else {
+      showMsg(res.error || "สมัครไม่สำเร็จ", "error");
+    }
+  }
+</script>
+</body>
+</html>

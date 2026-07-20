@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>นำเข้าข้อมูล — PSD_eNGINNo FIXTAB Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+<script src="js/import.js"></script>
+<script>
+  renderShell("import.html");
+  document.getElementById("mainContent").innerHTML = `
+    <div class="topbar">
+      <div>
+        <div class="eyebrow">Import Center</div>
+        <h2>นำเข้าข้อมูล</h2>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>ขั้นตอนที่ 1 — ไฟล์ข้อมูลต้นฉบับ (6 ไฟล์)</h3>
+      <p style="color:var(--text-muted);font-size:13px;margin-top:-6px">
+        ไฟล์ดิบจาก Fixtab / D365 / งบประมาณ — ระบบจะบันทึกประวัติการนำเข้าไว้ให้ (ไม่ได้ใช้แสดงผลใน Dashboard โดยตรง
+        เพราะต้องผ่านการวิเคราะห์ก่อน)
+      </p>
+      <div id="rawFilesList"></div>
+    </div>
+
+    <div class="section-title">ขั้นตอนที่ 2</div>
+    <div class="card">
+      <h3>ไฟล์ผลการวิเคราะห์ (4 ไฟล์)</h3>
+      <p style="color:var(--text-muted);font-size:13px;margin-top:-6px">
+        ไฟล์ผลลัพธ์จากการวิเคราะห์ — ระบบจะอ่านข้อมูลทั้งหมดเพื่อนำไปแสดงในหน้า Dashboard ทันที
+      </p>
+      <div id="analysisFilesList"></div>
+      <div style="margin-top:16px">
+        <a href="dashboard.html" class="btn">ไปที่ Dashboard →</a>
+      </div>
+    </div>
+  `;
+  initImportPage();
+</script>
+</body>
+</html>

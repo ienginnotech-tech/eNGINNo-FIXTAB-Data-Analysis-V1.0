@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin Management — PSD_eNGINNo FIXTAB Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div id="app"></div>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+<script src="js/admin.js"></script>
+<script>
+  const session = requireAdmin();
+  if (session) {
+    renderShell("admin.html");
+    document.getElementById("mainContent").innerHTML = `
+      <div class="topbar">
+        <div><div class="eyebrow">Admin</div><h2>Admin Management</h2></div>
+        <button class="btn secondary" onclick="loadUsers(); loadUploadLog();">↻ รีเฟรช</button>
+      </div>
+
+      <div class="card">
+        <h3>ผู้ใช้งานระบบ</h3>
+        <div style="overflow:auto">
+          <table id="tblUsers">
+            <thead><tr><th>ชื่อผู้ใช้</th><th>บทบาท</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="section-title">ประวัติการนำเข้าไฟล์ (ทุกผู้ใช้)</div>
+      <div class="card" style="overflow:auto">
+        <table id="tblUploads">
+          <thead><tr><th>เวลา</th><th>ผู้ใช้</th><th>ไฟล์</th><th>ประเภท</th><th>จำนวนแถว</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    `;
+    loadUsers();
+    loadUploadLog();
+  }
+</script>
+</body>
+</html>

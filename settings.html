@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ตั้งค่า — PSD_eNGINNo FIXTAB Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div id="app"></div>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+<script>
+  renderShell("settings.html");
+
+  const PRESETS = [
+    { name: "Control Room (ดีฟอลต์)", bg: "#0F1720", surface: "#17212B", accent: "#E8A33D", accent2: "#3FA796", danger: "#D9685F" },
+    { name: "Ocean", bg: "#0B1E2D", surface: "#122A3D", accent: "#4FC3E0", accent2: "#5BD1A0", danger: "#E0625B" },
+    { name: "Slate Light", bg: "#F4F5F7", surface: "#FFFFFF", accent: "#3457D5", accent2: "#1D9A6C", danger: "#D9483C" },
+    { name: "Graphite", bg: "#161616", surface: "#212121", accent: "#F2B84B", accent2: "#7FBF7F", danger: "#E06666" },
+  ];
+
+  function renderSettings() {
+    const t = getTheme();
+    const main = document.getElementById("mainContent");
+    main.innerHTML = `
+      <div class="topbar">
+        <div><div class="eyebrow">Preferences</div><h2>ตั้งค่า</h2></div>
+      </div>
+
+      <div class="card">
+        <h3>ชุดสีสำเร็จรูป</h3>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px" id="presetRow"></div>
+      </div>
+
+      <div class="section-title">ปรับสีเอง</div>
+      <div class="card">
+        <div class="grid cols-4">
+          <div class="field"><label>พื้นหลัง</label><input type="color" id="cBg" value="${t.bg}"></div>
+          <div class="field"><label>พื้นผิวการ์ด</label><input type="color" id="cSurface" value="${t.surface}"></div>
+          <div class="field"><label>สีเน้น (Accent)</label><input type="color" id="cAccent" value="${t.accent}"></div>
+          <div class="field"><label>สีเน้นรอง (OPEX)</label><input type="color" id="cAccent2" value="${t.accent2}"></div>
+        </div>
+        <div class="field">
+          <label>ขนาดตัวอักษร (${Math.round(t.fontScale * 100)}%)</label>
+          <input type="range" id="fScale" min="0.85" max="1.3" step="0.05" value="${t.fontScale}" style="width:100%">
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="btn" onclick="applySettingsForm()">บันทึกการตั้งค่า</button>
+          <button class="btn secondary" onclick="resetTheme(); renderSettings();">คืนค่าเริ่มต้น</button>
+        </div>
+      </div>
+
+      <div class="section-title">ตัวอย่าง</div>
+      <div class="grid cols-3">
+        <div class="card kpi"><div class="label">ตัวอย่าง KPI</div><div class="value">1,234</div></div>
+        <div class="card kpi ok"><div class="label">สถานะปกติ</div><div class="value">OPEX</div></div>
+        <div class="card kpi warn"><div class="label">ต้องจับตา</div><div class="value">CAPEX</div></div>
+      </div>
+    `;
+
+    const presetRow = document.getElementById("presetRow");
+    PRESETS.forEach((p) => {
+      const btn = document.createElement("div");
+      btn.style.cssText = "cursor:pointer;text-align:center;font-size:11px;color:var(--text-muted)";
+      btn.innerHTML = `<span class="swatch" style="background:${p.accent}"></span><div style="margin-top:4px">${p.name}</div>`;
+      btn.onclick = () => { saveTheme({ ...getTheme(), ...p }); renderSettings(); };
+      presetRow.appendChild(btn);
+    });
+  }
+
+  function applySettingsForm() {
+    saveTheme({
+      bg: document.getElementById("cBg").value,
+      surface: document.getElementById("cSurface").value,
+      accent: document.getElementById("cAccent").value,
+      accent2: document.getElementById("cAccent2").value,
+      danger: getTheme().danger,
+      fontScale: parseFloat(document.getElementById("fScale").value),
+    });
+    renderSettings();
+  }
+
+  renderSettings();
+</script>
+</body>
+</html>

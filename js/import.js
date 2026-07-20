@@ -1,0 +1,220 @@
+// ==========================================================================
+// Import: อัปโหลดไฟล์ต้นฉบับ 6 ไฟล์ (บันทึก log อย่างเดียว) และไฟล์ผลวิเคราะห์ 4 ไฟล์
+// (แกะข้อมูลเต็มด้วย SheetJS แล้วเก็บลง localStorage ให้หน้า Dashboard ใช้ต่อ)
+// ==========================================================================
+
+const RAW_FILES = [
+  { key: "fixtab_export", label: "Fixtab Export (ทุก Ticket)" },
+  { key: "pha_report", label: "PHA_report.xlsx (D365 PR/PO)" },
+  { key: "budget_2024", label: "04. Tracking Budget Control 2024" },
+  { key: "budget_2025", label: "05. Tracking Budget Control 2025" },
+  { key: "prpo_2026", label: "6. Overview PR-PO Tracking 2026" },
+  { key: "bitec_checklist", label: "BITEC BURI Readiness Checklist" },
+];
+
+const ANALYSIS_FILES = [
+  { key: "budget_linked", label: "1. Fixtab_Budget_Linked_Analysis.xlsx", parser: parseBudgetLinked },
+  { key: "cost_2approaches", label: "2. Fixtab_Cost_Analysis_2Approaches.xlsx", parser: parseCost2Approaches },
+  { key: "self_repair", label: "3. Fixtab_SelfRepair_vs_Procured.xlsx", parser: parseSelfRepair },
+  { key: "capex_opex", label: "4. Fixtab_CAPEX_OPEX_Framework.xlsx", parser: parseCapexOpex },
+];
+
+const DATA_KEY = "fixtab_data";
+
+function loadStoredData() {
+  const raw = localStorage.getItem(DATA_KEY);
+  if (!raw) return {};
+  try { return JSON.parse(raw); } catch { return {}; }
+}
+function saveStoredData(data) {
+  localStorage.setItem(DATA_KEY, JSON.stringify(data));
+}
+
+function sheetToRows(workbook, sheetName) {
+  const ws = workbook.Sheets[sheetName];
+  if (!ws) return null;
+  return XLSX.utils.sheet_to_json(ws, { defval: null, raw: true });
+}
+
+// หา sheet ที่ชื่อใกล้เคียงที่สุด (กันเคส user เปิด/แก้ชื่อชีตเพี้ยนไปเล็กน้อย)
+function findSheet(workbook, candidates) {
+  for (const name of candidates) {
+    if (workbook.SheetNames.includes(name)) return name;
+  }
+  // fallback: partial match
+  for (const sn of workbook.SheetNames) {
+    for (const c of candidates) {
+      if (sn.trim() === c.trim()) return sn;
+    }
+  }
+  return null;
+}
+
+// ---------- Parsers เฉพาะไฟล์ผลวิเคราะห์ทั้ง 4 ----------
+function parseBudgetLinked(wb) {
+  const s1 = findSheet(wb, ["Linked Ticket-Cost"]);
+  const s2 = findSheet(wb, ["Summary by Branch"]);
+  const s3 = findSheet(wb, ["Summary by Product"]);
+  return {
+    linkedTickets: s1 ? sheetToRowsSkipHeader(wb, s1, 4) : [],
+    byBranch: s2 ? sheetToRowsSkipHeader(wb, s2, 4) : [],
+    byProduct: s3 ? sheetToRowsSkipHeader(wb, s3, 4) : [],
+  };
+}
+
+function parseCost2Approaches(wb) {
+  const sCat = findSheet(wb, ["Category Summary"]);
+  const sFuzzy = findSheet(wb, ["Fuzzy Matches (Review Needed)"]);
+  const sConfirmed = findSheet(wb, ["Confirmed Direct Matches"]);
+  return {
+    categorySummary: sCat ? sheetToRowsSkipHeader(wb, sCat, 4) : [],
+    fuzzyMatches: sFuzzy ? sheetToRowsSkipHeader(wb, sFuzzy, 4) : [],
+    confirmedMatches: sConfirmed ? sheetToRowsSkipHeader(wb, sConfirmed, 4) : [],
+  };
+}
+
+function parseSelfRepair(wb) {
+  const sSummary = findSheet(wb, ["Summary"]);
+  const sByCat = findSheet(wb, ["By Equipment Category"]);
+  return {
+    summary: sSummary ? sheetToRowsSkipHeader(wb, sSummary, 4) : [],
+    byCategory: sByCat ? sheetToRowsSkipHeader(wb, sByCat, 3) : [],
+  };
+}
+
+function parseCapexOpex(wb) {
+  const sKnown = findSheet(wb, ["Threshold Framework (Known)"]);
+  const sExt = findSheet(wb, ["Category Threshold (ขยาย)"]);
+  const sClass = findSheet(wb, ["Ticket Classification (v2)"]);
+  return {
+    knownAssets: sKnown ? sheetToRowsSkipHeader(wb, sKnown, 3) : [],
+    categoryExtended: sExt ? sheetToRowsSkipHeader(wb, sExt, 4) : [],
+    classification: sClass ? sheetToRowsSkipHeader(wb, sClass, 3) : [],
+  };
+}
+
+// อ่านชีตโดยข้าม N แถวแรก (ชื่อเรื่อง/หมายเหตุ) แล้วใช้แถวถัดไปเป็น header
+function sheetToRowsSkipHeader(wb, sheetName, headerRowIndex) {
+  const ws = wb.Sheets[sheetName];
+  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+  if (raw.length <= headerRowIndex) return [];
+  const header = raw[headerRowIndex - 1].map((h) => (h === null ? "" : String(h).trim()));
+  const rows = [];
+  for (let i = headerRowIndex; i < raw.length; i++) {
+    const r = raw[i];
+    if (!r || r.every((c) => c === null || c === "")) continue;
+    const obj = {};
+    header.forEach((h, idx) => { if (h) obj[h] = r[idx] !== undefined ? r[idx] : null; });
+    rows.push(obj);
+  }
+  return rows;
+}
+
+// ---------- UI wiring ----------
+function initImportPage() {
+  const rawContainer = document.getElementById("rawFilesList");
+  const anaContainer = document.getElementById("analysisFilesList");
+
+  RAW_FILES.forEach((f) => rawContainer.appendChild(makeFileRow(f, handleRawFile)));
+  ANALYSIS_FILES.forEach((f) => anaContainer.appendChild(makeFileRow(f, handleAnalysisFile)));
+
+  refreshStatusFromStorage();
+}
+
+function makeFileRow(fileMeta, handler) {
+  const wrap = document.createElement("div");
+  wrap.className = "file-row";
+  wrap.id = `row_${fileMeta.key}`;
+  wrap.innerHTML = `
+    <span><span class="status-dot pending" id="dot_${fileMeta.key}"></span>${fileMeta.label}</span>
+    <label class="btn secondary small" style="cursor:pointer;margin:0">
+      เลือกไฟล์
+      <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFileInput(event, '${fileMeta.key}')" />
+    </label>
+  `;
+  return wrap;
+}
+
+function handleFileInput(event, key) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const rawMeta = RAW_FILES.find((f) => f.key === key);
+  const anaMeta = ANALYSIS_FILES.find((f) => f.key === key);
+  if (rawMeta) handleRawFile(file, rawMeta);
+  if (anaMeta) handleAnalysisFile(file, anaMeta);
+}
+
+function setDot(key, state) {
+  const dot = document.getElementById(`dot_${key}`);
+  if (dot) dot.className = `status-dot ${state}`;
+}
+
+async function handleRawFile(file, meta) {
+  setDot(meta.key, "pending");
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    let rowCount = 0;
+    wb.SheetNames.forEach((sn) => { rowCount += (sheetToRows(wb, sn) || []).length; });
+    setDot(meta.key, "ok");
+    logUploadToBackend(file.name, meta.key, rowCount, "raw source file (log only)");
+    markUploaded(meta.key, file.name);
+  } catch (err) {
+    setDot(meta.key, "err");
+    console.error(err);
+  }
+}
+
+async function handleAnalysisFile(file, meta) {
+  setDot(meta.key, "pending");
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    const parsed = meta.parser(wb);
+    const data = loadStoredData();
+    data[meta.key] = parsed;
+    data[meta.key + "_fileName"] = file.name;
+    data[meta.key + "_uploadedAt"] = new Date().toISOString();
+    saveStoredData(data);
+    setDot(meta.key, "ok");
+    let rowCount = 0;
+    Object.values(parsed).forEach((v) => { if (Array.isArray(v)) rowCount += v.length; });
+    logUploadToBackend(file.name, meta.key, rowCount, "analysis file (parsed for dashboard)");
+    markUploaded(meta.key, file.name);
+  } catch (err) {
+    setDot(meta.key, "err");
+    console.error(err);
+    alert("อ่านไฟล์ไม่สำเร็จ: " + err.message);
+  }
+}
+
+function markUploaded(key, fileName) {
+  const row = document.getElementById(`row_${key}`);
+  if (!row) return;
+  let tag = row.querySelector(".uploaded-tag");
+  if (!tag) {
+    tag = document.createElement("span");
+    tag.className = "uploaded-tag mono";
+    tag.style.cssText = "font-size:11px;color:var(--text-muted);margin-left:8px";
+    row.querySelector("span").appendChild(tag);
+  }
+  tag.textContent = ` (${fileName})`;
+}
+
+function refreshStatusFromStorage() {
+  const data = loadStoredData();
+  ANALYSIS_FILES.forEach((f) => {
+    if (data[f.key]) {
+      setDot(f.key, "ok");
+      markUploaded(f.key, data[f.key + "_fileName"] || "อัปโหลดแล้ว");
+    }
+  });
+}
+
+async function logUploadToBackend(fileName, fileType, rowCount, note) {
+  const session = getSession();
+  await apiCall("logUpload", {
+    username: session ? session.username : "unknown",
+    fileName, fileType, rowCount, note,
+  });
+}
