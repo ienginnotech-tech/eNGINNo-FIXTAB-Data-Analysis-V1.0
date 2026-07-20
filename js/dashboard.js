@@ -19,6 +19,79 @@ const DASHBOARD_TABS = [
   { key: "capex_opex", label: "4. CAPEX/OPEX Framework" },
 ];
 
+// ---------- ตัวกรองปี/เดือน ----------
+let filterYear = "all";
+let filterMonth = "all";
+
+const THAI_MONTHS = ["01-ม.ค.", "02-ก.พ.", "03-มี.ค.", "04-เม.ย.", "05-พ.ค.", "06-มิ.ย.",
+                      "07-ก.ค.", "08-ส.ค.", "09-ก.ย.", "10-ต.ค.", "11-พ.ย.", "12-ธ.ค."];
+
+// พยายามหา field ที่เป็นวันที่ในแถวข้อมูล แล้วคืนค่า {year, month} (month = 1-12) หรือ null ถ้าไม่เจอ
+function extractDate(row) {
+  for (const key of Object.keys(row)) {
+    if (!/date|วันที่|เมื่อ/i.test(key)) continue;
+    const v = row[key];
+    if (!v) continue;
+    if (v instanceof Date && !isNaN(v)) return { year: v.getFullYear(), month: v.getMonth() + 1 };
+    if (typeof v === "string") {
+      // รูปแบบ dd-mm-yyyy (ที่ใช้ในไฟล์วิเคราะห์ทั้งหมด)
+      const m1 = v.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/);
+      if (m1) return { year: parseInt(m1[3]), month: parseInt(m1[2]) };
+      // รูปแบบ ISO yyyy-mm-dd
+      const m2 = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (m2) return { year: parseInt(m2[1]), month: parseInt(m2[2]) };
+    }
+  }
+  return null;
+}
+
+function collectYears(data) {
+  const years = new Set();
+  ANALYSIS_FILES.forEach((f) => {
+    const fd = data[f.key];
+    if (!fd) return;
+    Object.values(fd).forEach((rows) => {
+      if (!Array.isArray(rows)) return;
+      rows.forEach((r) => {
+        const d = extractDate(r);
+        if (d) years.add(d.year);
+      });
+    });
+  });
+  return Array.from(years).sort();
+}
+
+function rowPassesFilter(row) {
+  if (filterYear === "all" && filterMonth === "all") return true;
+  const d = extractDate(row);
+  if (!d) return true; // แถวที่ไม่มีวันที่ (เช่นตารางสรุป) ไม่ถูกกรองออก
+  if (filterYear !== "all" && d.year !== parseInt(filterYear)) return false;
+  if (filterMonth !== "all" && d.month !== parseInt(filterMonth)) return false;
+  return true;
+}
+
+function renderFilterBar(data) {
+  const years = collectYears(data);
+  return `
+    <select id="filterYearSel" onchange="setFilter('year', this.value)" style="width:auto;min-width:110px">
+      <option value="all">ทุกปี</option>
+      ${years.map((y) => `<option value="${y}" ${filterYear == y ? "selected" : ""}>ปี ${y}</option>`).join("")}
+    </select>
+    <select id="filterMonthSel" onchange="setFilter('month', this.value)" style="width:auto;min-width:130px">
+      <option value="all">ทุกเดือน</option>
+      ${THAI_MONTHS.map((m, i) => `<option value="${i + 1}" ${filterMonth == i + 1 ? "selected" : ""}>${m}</option>`).join("")}
+    </select>
+  `;
+}
+
+function setFilter(kind, value) {
+  if (kind === "year") filterYear = value;
+  if (kind === "month") filterMonth = value;
+  buildDashboard(currentDashboardTab);
+}
+
+let currentDashboardTab = "overview";
+
 function buildDashboard(activeTab) {
   const data = loadStoredData();
   const has = {
@@ -29,7 +102,8 @@ function buildDashboard(activeTab) {
   };
   const anyData = Object.values(has).some(Boolean);
   const main = document.getElementById("mainContent");
-  const tab = activeTab || "overview";
+  const tab = activeTab || currentDashboardTab || "overview";
+  currentDashboardTab = tab;
 
   if (!anyData) {
     main.innerHTML = `
@@ -42,12 +116,15 @@ function buildDashboard(activeTab) {
     return;
   }
 
-  // ---- แท็บสลับไฟล์ ----
+  // ---- แท็บสลับไฟล์ + ตัวกรองปี/เดือน ----
   const tabsHTML = `
-    <div class="auth-tabs" style="max-width:640px;margin-bottom:20px">
-      ${DASHBOARD_TABS.map(
-        (t) => `<button class="${tab === t.key ? "active" : ""}" onclick="switchDashboardTab('${t.key}')">${t.label}</button>`
-      ).join("")}
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+      <div class="auth-tabs" style="max-width:640px;margin-bottom:0">
+        ${DASHBOARD_TABS.map(
+          (t) => `<button class="${tab === t.key ? "active" : ""}" onclick="switchDashboardTab('${t.key}')">${t.label}</button>`
+        ).join("")}
+      </div>
+      <div style="display:flex;gap:8px">${renderFilterBar(data)}</div>
     </div>`;
   main.innerHTML = tabsHTML + `<div id="dashboardBody"></div>`;
 
@@ -88,11 +165,27 @@ function renderFileTab(data, key) {
     </div>`;
 
   Object.keys(fileData).forEach((sheetKey) => {
-    const rows = fileData[sheetKey];
-    if (!Array.isArray(rows)) return;
-    html += `<div class="section-title">${sheetKey} (${rows.length.toLocaleString()} แถว)</div>`;
+    const allRows = fileData[sheetKey];
+    if (!Array.isArray(allRows)) return;
+
+    // ชีตที่เป็นข้อความล้วน (ไม่มีตาราง) เช่น Methodology, Read Me — เก็บเป็น array ของ string
+    if (allRows.length && typeof allRows[0] === "string") {
+      html += `<div class="section-title">${sheetKey}</div>`;
+      html += `<div class="card" style="max-height:320px;overflow:auto">`;
+      allRows.forEach((line) => {
+        html += `<div style="font-size:13px;color:${line.trim() === "" ? "transparent" : "var(--text)"};padding:2px 0;white-space:pre-wrap">${line}</div>`;
+      });
+      html += `</div>`;
+      return;
+    }
+
+    const rows = allRows.filter(rowPassesFilter);
+    const filterNote = rows.length !== allRows.length
+      ? ` — กรองตามช่วงเวลาที่เลือกแล้ว จาก ${allRows.length.toLocaleString()} แถว`
+      : "";
+    html += `<div class="section-title">${sheetKey} (${rows.length.toLocaleString()} แถว${filterNote})</div>`;
     if (!rows.length) {
-      html += `<div class="card empty">ไม่มีข้อมูลในตารางนี้</div>`;
+      html += `<div class="card empty">ไม่มีข้อมูลในช่วงเวลาที่เลือก</div>`;
       return;
     }
     const cols = Object.keys(rows[0]);
