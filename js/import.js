@@ -19,16 +19,7 @@ const ANALYSIS_FILES = [
   { key: "capex_opex", label: "4. Fixtab_CAPEX_OPEX_Framework.xlsx", parser: parseCapexOpex },
 ];
 
-const DATA_KEY = "fixtab_data";
-
-function loadStoredData() {
-  const raw = localStorage.getItem(DATA_KEY);
-  if (!raw) return {};
-  try { return JSON.parse(raw); } catch { return {}; }
-}
-function saveStoredData(data) {
-  localStorage.setItem(DATA_KEY, JSON.stringify(data));
-}
+// DATA_KEY, loadStoredData(), saveStoredData() ถูกย้ายไปอยู่ใน js/storage.js แล้ว (ใช้ IndexedDB แทน localStorage)
 
 function sheetToRows(workbook, sheetName) {
   const ws = workbook.Sheets[sheetName];
@@ -206,11 +197,12 @@ async function handleAnalysisFile(file, meta) {
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: "array" });
     const parsed = meta.parser(wb);
-    const data = loadStoredData();
+    const data = await loadStoredData();
     data[meta.key] = parsed;
     data[meta.key + "_fileName"] = file.name;
     data[meta.key + "_uploadedAt"] = new Date().toISOString();
-    saveStoredData(data);
+    const ok = await saveStoredData(data);
+    if (!ok) { setDot(meta.key, "err"); return; }
     setDot(meta.key, "ok");
     let rowCount = 0;
     Object.values(parsed).forEach((v) => { if (Array.isArray(v)) rowCount += v.length; });
@@ -236,8 +228,8 @@ function markUploaded(key, fileName) {
   tag.textContent = ` (${fileName})`;
 }
 
-function refreshStatusFromStorage() {
-  const data = loadStoredData();
+async function refreshStatusFromStorage() {
+  const data = await loadStoredData();
   ANALYSIS_FILES.forEach((f) => {
     if (data[f.key]) {
       setDot(f.key, "ok");
@@ -273,11 +265,11 @@ function clearInputStatus() {
   alert("ล้างสถานะไฟล์ต้นฉบับเรียบร้อย");
 }
 
-// ล้างข้อมูลวิเคราะห์ (Output) — ลบข้อมูลที่ parse ไว้ทั้งหมดออกจาก localStorage
+// ล้างข้อมูลวิเคราะห์ (Output) — ลบข้อมูลที่ parse ไว้ทั้งหมดออกจาก IndexedDB
 // มีผลกับหน้า Dashboard โดยตรง (ต้องอัปโหลดไฟล์วิเคราะห์ 4 ไฟล์ใหม่หลังล้าง)
-function clearOutputData() {
+async function clearOutputData() {
   if (!confirm("ล้างข้อมูลวิเคราะห์ทั้งหมด (Output) ที่ใช้แสดงผลใน Dashboard?\nต้องอัปโหลดไฟล์วิเคราะห์ 4 ไฟล์ใหม่หลังล้าง — ไฟล์จริงในเครื่องคุณไม่หายไปไหน")) return;
-  localStorage.removeItem(DATA_KEY);
+  await clearStoredData();
   ANALYSIS_FILES.forEach((f) => {
     setDot(f.key, "pending");
     const row = document.getElementById(`row_${f.key}`);
@@ -291,9 +283,9 @@ function clearOutputData() {
   alert("ล้างข้อมูลวิเคราะห์เรียบร้อย — Dashboard จะว่างจนกว่าจะอัปโหลดไฟล์ใหม่");
 }
 
-function clearAllData() {
+async function clearAllData() {
   if (!confirm("ล้างข้อมูลทั้งหมด (ทั้ง Input และ Output)? การกระทำนี้ยกเลิกไม่ได้")) return;
-  localStorage.removeItem(DATA_KEY);
+  await clearStoredData();
   [...RAW_FILES, ...ANALYSIS_FILES].forEach((f) => {
     setDot(f.key, "pending");
     const row = document.getElementById(`row_${f.key}`);
