@@ -49,6 +49,11 @@ function extractDate(row) {
         return { year, month, day, time: new Date(year, month - 1, day).getTime() };
       }
     }
+    // เผื่อไฟล์เก่าที่เซลล์วันที่ยังไม่ได้จัดรูปแบบ (Excel Date Serial Number ดิบ เช่น 44711)
+    if (typeof v === "number" && v > 25000 && v < 60000) {
+      const d = new Date(Math.round((v - 25569) * 86400 * 1000)); // Excel epoch (1900) -> JS epoch (1970)
+      if (!isNaN(d)) return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate(), time: d.getTime() };
+    }
   }
   return null;
 }
@@ -354,6 +359,7 @@ function renderFileTab(data, key) {
 
 function formatCell(v) {
   if (v === null || v === undefined) return "";
+  if (v instanceof Date && !isNaN(v)) return v.toLocaleDateString("th-TH", { year: "numeric", month: "2-digit", day: "2-digit" });
   if (typeof v === "number") return fmtNumber(v);
   return String(v);
 }
