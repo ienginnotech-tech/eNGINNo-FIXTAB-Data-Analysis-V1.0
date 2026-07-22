@@ -49,9 +49,8 @@
         อัปโหลดแค่ 2 ไฟล์ (Fixtab Export + PHA_report) ระบบจะวิเคราะห์ให้ทันทีในเบราว์เซอร์ ไม่ต้องรันสคริปต์ Python เลย
       </p>
       <p style="color:var(--danger);font-size:12px">
-        ⚠️ ยังไม่ครอบคลุมทุกส่วน: ตอนนี้รองรับ "จัดหมวดอุปกรณ์ / แยกสัญญา PM / จำแนกลักษณะ Ticket / เกณฑ์ CAPEX-OPEX"
-        แต่ยังไม่รองรับ Direct match และ Fuzzy match กับไฟล์ PR-PO Tracking (ไฟล์ "1.Budget Linked" จะว่าง)
-        — ถ้าต้องการตัวเลขส่วนนั้น ให้ใช้สคริปต์ Python ควบคู่ไปก่อน
+        ⚠️ รองรับแล้ว: จัดหมวดอุปกรณ์ / แยกสัญญา PM / จำแนกลักษณะ Ticket / เกณฑ์ CAPEX-OPEX / Direct Match กับไฟล์งบ
+        <br/>ยังไม่รองรับ: Fuzzy Match (การจับคู่แบบประมาณการ) — ถ้าต้องการตัวเลขส่วนนี้ ให้ใช้สคริปต์ Python ควบคู่ไปก่อน
       </p>
       <div class="grid cols-2" style="margin-top:12px">
         <div class="field">
@@ -62,6 +61,10 @@
           <label>PHA_report.xlsx</label>
           <input type="file" id="anPhaInput" accept=".xlsx" />
         </div>
+      </div>
+      <div class="field">
+        <label>ไฟล์งบประมาณ / PR-PO Tracking (เลือกได้หลายไฟล์ ทุกปีที่มี — ไม่ใส่ก็ได้ ถ้าไม่ใส่จะข้าม Direct Match)</label>
+        <input type="file" id="anBudgetInput" accept=".xlsx" multiple />
       </div>
       <button class="btn" onclick="runBrowserAnalysis(event)">▶ เริ่มวิเคราะห์</button>
       <div id="anProgress" style="margin-top:12px;font-size:13px;color:var(--text-muted)"></div>
