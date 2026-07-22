@@ -329,6 +329,7 @@ async function runBrowserAnalysis(event) {
   const fixtabInput = document.getElementById("anFixtabInput");
   const phaInput = document.getElementById("anPhaInput");
   const budgetInput = document.getElementById("anBudgetInput");
+  const locationInput = document.getElementById("anLocationInput");
   const progressBox = document.getElementById("anProgress");
 
   if (!fixtabInput.files[0] || !phaInput.files[0]) {
@@ -337,13 +338,14 @@ async function runBrowserAnalysis(event) {
   }
 
   const budgetFiles = Array.from(budgetInput.files || []);
+  const locationFile = locationInput.files[0] || null;
 
   const btn = event.target;
   btn.disabled = true;
   btn.textContent = "กำลังวิเคราะห์...";
 
   try {
-    const result = await analyzeRawFiles(fixtabInput.files[0], phaInput.files[0], budgetFiles, (msg) => {
+    const result = await analyzeRawFiles(fixtabInput.files[0], phaInput.files[0], budgetFiles, locationFile, (msg) => {
       progressBox.textContent = "⏳ " + msg;
     });
 
@@ -363,6 +365,12 @@ async function runBrowserAnalysis(event) {
       : "วิเคราะห์ในเบราว์เซอร์ (Beta) — ไม่มีไฟล์งบ ข้าม Direct Match";
     data.budget_linked_uploadedAt = new Date().toISOString();
 
+    if (locationFile) {
+      data.main_data = result.main_data;
+      data.main_data_fileName = "สร้างอัตโนมัติจาก Fixtab Export + Location.xlsx (Beta)";
+      data.main_data_uploadedAt = new Date().toISOString();
+    }
+
     const ok = await saveStoredData(data);
     if (!ok) throw new Error("บันทึกข้อมูลไม่สำเร็จ (พื้นที่เก็บข้อมูลอาจเต็ม)");
 
@@ -370,14 +378,20 @@ async function runBrowserAnalysis(event) {
     setDot("capex_opex", "ok"); markUploaded("capex_opex", "Beta: วิเคราะห์ในเบราว์เซอร์");
     setDot("cost_2approaches", "ok"); markUploaded("cost_2approaches", "Beta: วิเคราะห์ในเบราว์เซอร์");
     setDot("budget_linked", "ok"); markUploaded("budget_linked", "Beta: วิเคราะห์ในเบราว์เซอร์");
+    if (locationFile) {
+      setDot("main_data", "ok"); markUploaded("main_data", "สร้างอัตโนมัติ (Beta)");
+    }
 
     const directNote = budgetFiles.length
       ? ` (จับคู่ Direct Match ได้ ${result.budget_linked.linkedTickets.length.toLocaleString()} Ticket)`
       : " (ไม่ได้ใส่ไฟล์งบ — ข้าม Direct Match)";
-    progressBox.innerHTML = `✅ วิเคราะห์สำเร็จ! Ticket ที่จัดหมวดได้ ${result.cost_2approaches.rawTicketsByCategory.length.toLocaleString()} รายการ${directNote} — <a href="dashboard.html">ไปที่ Dashboard →</a>`;
+    const wrNote = locationFile
+      ? ` — สร้างข้อมูล Work Request ให้แล้ว (ไปที่หน้า Work Request ได้เลย)`
+      : ` — ไม่ได้ใส่ Location.xlsx จึงยังไม่มีข้อมูล Work Request`;
+    progressBox.innerHTML = `✅ วิเคราะห์สำเร็จ! Ticket ที่จัดหมวดได้ ${result.cost_2approaches.rawTicketsByCategory.length.toLocaleString()} รายการ${directNote}${wrNote} — <a href="dashboard.html">ไปที่ Data Analysis →</a> | <a href="operations.html">ไปที่ Work Request →</a>`;
 
     const session = getSession();
-    const allFileNames = [fixtabInput.files[0].name, phaInput.files[0].name, ...budgetFiles.map((f) => f.name)].join(" + ");
+    const allFileNames = [fixtabInput.files[0].name, phaInput.files[0].name, ...budgetFiles.map((f) => f.name), locationFile ? locationFile.name : null].filter(Boolean).join(" + ");
     logUploadToBackend(allFileNames, "browser_analysis",
       result.cost_2approaches.rawTicketsByCategory.length, `วิเคราะห์ในเบราว์เซอร์โดย ${session ? session.username : "unknown"}`);
   } catch (err) {

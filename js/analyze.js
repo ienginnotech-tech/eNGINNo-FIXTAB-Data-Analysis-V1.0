@@ -209,8 +209,219 @@ async function findDirectMatchesJS(budgetFiles, fxRowsAll, onProgress) {
   return { linkedTickets, dataGaps };
 }
 
+// ---------- เพิ่มเติมสำหรับ Work Request (คอลัมน์ X-AN) ----------
+const AI_LABOR_KW = ["ค่าแรง", "labor", "ค่าบริการ", "ค่าติดตั้ง"];
+const AI_PARTS_KW = ["อะไหล่", "part", "วัสดุ", "อุปกรณ์"];
+
+function anClassifyPO(text) {
+  if (typeof text !== "string") return "repair";
+  const t = text.toLowerCase();
+  if (AI_LABOR_KW.some((k) => t.includes(k.toLowerCase()))) return "labor";
+  if (AI_PARTS_KW.some((k) => t.includes(k.toLowerCase()))) return "parts";
+  return "repair";
+}
+
+// รวมเลข Ticket ที่อ้างอิงจาก PHA_report (TEXT) + ไฟล์งบ (Description) พร้อมจัดหมวดค่าใช้จ่าย
+async function buildCostMapJS(phaRows, budgetFiles, prog) {
+  const map = {}; // tic_num -> {labor, parts, repair}
+  const add = (tic, amount, cls) => {
+    if (!map[tic]) map[tic] = { labor: 0, parts: 0, repair: 0 };
+    map[tic][cls] += Number(amount) || 0;
+  };
+  phaRows.forEach((r) => {
+    const text = r["TEXT"];
+    if (typeof text !== "string") return;
+    const tics = anExtractTicNumbers(text);
+    if (!tics.length) return;
+    const cls = anClassifyPO(text);
+    tics.forEach((tic) => add(tic, r["NETAMOUNT"], cls));
+  });
+  if (budgetFiles && budgetFiles.length) {
+    for (const file of budgetFiles) {
+      if (prog) prog(`กำลังอ่านค่าใช้จ่ายจาก ${file.name} (สำหรับ Work Request)...`);
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array", cellDates: true });
+      for (const sheetName of wb.SheetNames) {
+        const ws = wb.Sheets[sheetName];
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+        let headerRowIdx = null;
+        for (let i = 0; i < Math.min(6, raw.length); i++) {
+          const joined = (raw[i] || []).filter((c) => c != null).map((c) => String(c).toLowerCase()).join(" ");
+          if (joined.includes("pr no") || joined.includes("description")) headerRowIdx = i;
+        }
+        if (headerRowIdx === null) continue;
+        const header = (raw[headerRowIdx] || []).map((h) => (h == null ? "" : String(h).toLowerCase().trim()));
+        const amountCol = header.findIndex((h) => h.includes("amount") && h.includes("po"));
+        const descCol = header.findIndex((h) => h.includes("description"));
+        if (descCol === -1) continue;
+        for (let r = headerRowIdx + 1; r < raw.length; r++) {
+          const row = raw[r];
+          if (!row) continue;
+          const desc = row[descCol];
+          if (typeof desc !== "string") continue;
+          const tics = anExtractTicNumbers(desc);
+          if (!tics.length) continue;
+          const amount = amountCol >= 0 ? row[amountCol] : null;
+          const cls = anClassifyPO(desc);
+          tics.forEach((tic) => add(tic, amount, cls));
+        }
+      }
+    }
+  }
+  return map;
+}
+
+function anMatchLocationExact(value, lookup) {
+  if (typeof value !== "string") return null;
+  return lookup[value.trim().toLowerCase()] || null;
+}
+
+function anMatchLocationSubstring(value, locationNames) {
+  if (typeof value !== "string" || value.trim().length < 4) return null;
+  const v = value.trim().toLowerCase();
+  let best = null, bestLen = 0;
+  locationNames.forEach((name) => {
+    const nl = name.toLowerCase();
+    if ((v.includes(nl) || nl.includes(v)) && name.length > bestLen) { best = name; bestLen = name.length; }
+  });
+  return best;
+}
+
+function anCombineDateTime(dateVal, timeVal) {
+  if (!dateVal || dateVal === "" || !timeVal || timeVal === "") return null;
+  let d = dateVal instanceof Date ? dateVal : null;
+  if (!d && typeof dateVal === "string") {
+    const m = dateVal.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/);
+    if (m) d = new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
+  }
+  if (!d || isNaN(d)) return null;
+  let hh = 0, mm = 0, ss = 0;
+  if (timeVal instanceof Date) { hh = timeVal.getHours(); mm = timeVal.getMinutes(); ss = timeVal.getSeconds(); }
+  else if (typeof timeVal === "string") {
+    const tm = timeVal.match(/^(\d{1,2}):(\d{1,2}):?(\d{1,2})?/);
+    if (tm) { hh = parseInt(tm[1]); mm = parseInt(tm[2]); ss = parseInt(tm[3] || "0"); }
+  }
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm, ss);
+}
+
+function anHoursDiff(a, b) {
+  if (!a || !b) return null;
+  const diff = (a.getTime() - b.getTime()) / 3600000;
+  return diff >= 0 ? Math.round(diff * 100) / 100 : null;
+}
+
+// ---------- สร้างตาราง Main Data (คอลัมน์ X-AN) สำหรับหน้า Work Request ----------
+async function buildMainDataJS(fxRows, phaRows, locationRows, budgetFiles, onProgress) {
+  const prog = (msg) => { if (onProgress) onProgress(msg); };
+  if (!locationRows || !locationRows.length) {
+    prog("ไม่มีไฟล์ Location.xlsx — ข้ามการจับคู่อาคาร/พื้นที่ (คอลัมน์ X, Y, AN จะว่าง)");
+  }
+
+  const locationNames = (locationRows || []).map((r) => String(r["LocationName"] || "").trim()).filter(Boolean);
+  const areaNames = (locationRows || []).map((r) => String(r["Area"] || "").trim()).filter(Boolean);
+  const nameLookup = {};
+  locationNames.forEach((n) => { nameLookup[n.toLowerCase()] = n; });
+  const locToArea = {};
+  (locationRows || []).forEach((r) => {
+    const ln = String(r["LocationName"] || "").trim();
+    const ar = String(r["Area"] || "").trim();
+    if (ln) locToArea[ln] = ar || ln;
+  });
+  const searchCandidates = Array.from(new Set([...locationNames, ...areaNames])).filter((c) => c.length >= 3).sort((a, b) => b.length - a.length);
+
+  prog("กำลังจับคู่อาคาร/พื้นที่ และคำนวณเวลา/ค่าใช้จ่าย (Work Request)...");
+
+  const costMap = await buildCostMapJS(phaRows, budgetFiles, prog);
+
+  // pass 1: X, Y, Z, AA, AB-AG, AH ต่อแถว
+  const enriched = fxRows.map((r) => {
+    let x = anMatchLocationExact(r["Product Name"], nameLookup) || anMatchLocationExact(r["Branch Name"], nameLookup);
+    if (!x && locationNames.length) x = anMatchLocationSubstring(r["Product Name"], locationNames);
+
+    let y = null;
+    const issueText = typeof r["Issue Detail"] === "string" ? r["Issue Detail"] : "";
+    if (issueText && searchCandidates.length) {
+      if (x) {
+        const hint = locToArea[x] || x;
+        if (issueText.toLowerCase().includes(x.toLowerCase())) y = locToArea[x] || x;
+        else if (hint && issueText.toLowerCase().includes(hint.toLowerCase())) y = hint;
+      }
+      if (!y) {
+        for (const c of searchCandidates) {
+          if (issueText.toLowerCase().includes(c.toLowerCase())) { y = locToArea[c] || c; break; }
+        }
+      }
+    }
+
+    const reportDt = anCombineDateTime(r["Report Date"], r["Report Time"]);
+    const checkinDt = anCombineDateTime(r["Check-in Date"], r["Check-in Time"]);
+    const completeDt = anCombineDateTime(r["Complete Date"], r["Complete Time"]);
+    const z = anHoursDiff(checkinDt, reportDt);
+    const aa = anHoursDiff(completeDt, checkinDt);
+
+    const techNames = typeof r["Technicians"] === "string" && r["Technicians"].trim()
+      ? r["Technicians"].split(",").map((n) => n.trim()).filter(Boolean).slice(0, 5) : [];
+    const ag = techNames.length;
+    const ah = (aa !== null && ag > 0) ? Math.round(50 * aa * ag * 100) / 100 : null;
+
+    const ticNum = (() => { const m = String(r["Ticket Number"] || "").match(/TIC0*(\d+)/); return m ? parseInt(m[1]) : null; })();
+    const cost = ticNum !== null && costMap[ticNum] ? costMap[ticNum] : null;
+    const ai = cost ? cost.labor : null;
+    const aj = cost ? cost.parts : null;
+    const ak = cost ? cost.repair : null;
+    const al = null;
+    const parts = [ah, ai, aj, ak, al].filter((v) => v !== null && v !== undefined);
+    const am = parts.length ? Math.round(parts.reduce((a, b) => a + b, 0) * 100) / 100 : null;
+
+    return {
+      "Ticket Number": r["Ticket Number"], "Company Name": r["Company Name"], "Branch Name": r["Branch Name"],
+      "Product Name": r["Product Name"], "Report Date": r["Report Date"], "Report Time": r["Report Time"],
+      "Priority": r["Priority"], "Status Ticket": r["Status Ticket"], "Issue Type": r["Issue Type"],
+      "Ticket Type": r["Ticket Type"], "Issue Detail": r["Issue Detail"], "Technicians": r["Technicians"],
+      "Complete Detail By Technician": r["Complete Detail By Technician"],
+      "แยกข้อมูล Product Name(D)เป็นอาคาร เทียบกับข้อมูลในLocation(LocationName)": x,
+      "แยกข้อมูล Issue detail(O)เป็นพื้นที่ เทียบกับข้อมูลในLocation(Area)": y,
+      "เวลาแจ้งงานถึงเข้าพื้นที่(T-F):ชั่วโมง)": z,
+      "เวลาในที่ดำเนินการ(V-T):ชั่วโมง)": aa,
+      "รายชื่อช่างที่ดำเนินการใน R คนที่ 1": techNames[0] || null,
+      "รายชื่อช่างที่ดำเนินการใน R คนที่ 2": techNames[1] || null,
+      "รายชื่อช่างที่ดำเนินการใน R คนที่ 3": techNames[2] || null,
+      "รายชื่อช่างที่ดำเนินการใน R คนที่ 4": techNames[3] || null,
+      "รายชื่อช่างที่ดำเนินการใน R คนที่ 5": techNames[4] || null,
+      "จำนวนช่างที่ดำเนินการ(AB-AF)": ag,
+      "ค่าแรงช่างอาคารดำเนินการ(50THB x ชั่วโมง x จำนวนช่าง)-THB": ah,
+      "ค่าแรงผู้รับเหมาดำเนินการ(อ้างอิง PR/PO)": ai,
+      "ค่าอะไหล่(อ้างอิง PR/PO)": aj,
+      "ค่าซ่อมโดย ผู้รับเหมา(อ้างอิง PR/PO)": ak,
+      "ค่าบริหารจัดการ(THB) [กรอกเอง]": al,
+      "ค่าใช้จ่ายรวม(AH-AL)-THB": am,
+      "_x": x, "_issueType": r["Issue Type"],
+    };
+  });
+
+  // pass 2: AN — นับอาการเสียซ้ำ (กลุ่ม X + Issue Type)
+  const repeatCounts = {};
+  enriched.forEach((r) => {
+    if (!r._x) return;
+    const key = `${r._x}||${r._issueType || ""}`;
+    repeatCounts[key] = (repeatCounts[key] || 0) + 1;
+  });
+  enriched.forEach((r) => {
+    if (!r._x) { r["นับอาการเสียซ้ำที่จุดเดิม(ครั้ง)"] = null; return; }
+    const key = `${r._x}||${r._issueType || ""}`;
+    r["นับอาการเสียซ้ำที่จุดเดิม(ครั้ง)"] = repeatCounts[key];
+    delete r._x; delete r._issueType;
+  });
+
+  const nX = enriched.filter((r) => r["แยกข้อมูล Product Name(D)เป็นอาคาร เทียบกับข้อมูลในLocation(LocationName)"]).length;
+  const nY = enriched.filter((r) => r["แยกข้อมูล Issue detail(O)เป็นพื้นที่ เทียบกับข้อมูลในLocation(Area)"]).length;
+  prog(`Work Request: จับคู่อาคารได้ ${nX}/${enriched.length}, พื้นที่ได้ ${nY}/${enriched.length}`);
+
+  return enriched;
+}
+
 // ---------- Main pipeline ----------
-async function analyzeRawFiles(fixtabFile, phaFile, budgetFiles, onProgress) {
+async function analyzeRawFiles(fixtabFile, phaFile, budgetFiles, locationFile, onProgress) {
   const prog = (msg) => { if (onProgress) onProgress(msg); };
 
   prog("กำลังอ่านไฟล์ Fixtab Export...");
@@ -350,7 +561,19 @@ async function analyzeRawFiles(fixtabFile, phaFile, budgetFiles, onProgress) {
     { "แนวทาง": "2. Category-level", "ผลลัพธ์": `${taggedFx.length} Ticket ถูกจัดหมวดได้ เทียบค่าใช้จ่าย ${taggedRm.reduce((a, r) => a + (Number(r["NETAMOUNT"]) || 0), 0).toLocaleString()} บาท`, "ระดับความเชื่อมั่น": "แนวทิศทาง" },
   ] : [];
 
+  // ---- Work Request: สร้างตาราง Main Data (X-AN) จากไฟล์เดียวกันนี้เลย ไม่ต้องอัปโหลดไฟล์แยก ----
+  let locationRows = [];
+  if (locationFile) {
+    prog("กำลังอ่านไฟล์ Location.xlsx...");
+    const locBuf = await locationFile.arrayBuffer();
+    const locWb = XLSX.read(locBuf, { type: "array", cellDates: true });
+    const locSheetName = locWb.SheetNames.includes("Location") ? "Location" : locWb.SheetNames[0];
+    locationRows = anSheetRows(locWb, locSheetName);
+  }
+  const mainDataRows = await buildMainDataJS(fxRows, phaRows, locationRows, budgetFiles, prog);
+
   return {
+    main_data: { rows: mainDataRows },
     self_repair: {
       summary: summaryPct,
       allTicketsClassified,
