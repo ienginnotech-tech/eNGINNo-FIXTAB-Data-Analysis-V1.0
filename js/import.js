@@ -12,6 +12,23 @@ const RAW_FILES = [
   { key: "bitec_checklist", label: "BITEC BURI Readiness Checklist" },
 ];
 
+const OPERATIONS_FILES = [
+  { key: "main_data", label: "Main_data_fixtab_analysis_ENRICHED.xlsx", parser: parseMainData },
+  { key: "location", label: "Location.xlsx", parser: parseLocationFile },
+];
+
+function parseMainData(wb) {
+  const sheetName = wb.SheetNames.includes("Fixtab") ? "Fixtab" : wb.SheetNames[0];
+  const rows = sheetToRows(wb, sheetName) || [];
+  return { rows };
+}
+
+function parseLocationFile(wb) {
+  const sheetName = wb.SheetNames.includes("Location") ? "Location" : wb.SheetNames[0];
+  const rows = sheetToRows(wb, sheetName) || [];
+  return { rows };
+}
+
 const ANALYSIS_FILES = [
   { key: "budget_linked", label: "1. Fixtab_Budget_Linked_Analysis.xlsx", parser: parseBudgetLinked },
   { key: "cost_2approaches", label: "2. Fixtab_Cost_Analysis_2Approaches.xlsx", parser: parseCost2Approaches },
@@ -140,9 +157,11 @@ function sheetToRowsSkipHeader(wb, sheetName, headerRowIndex) {
 function initImportPage() {
   const rawContainer = document.getElementById("rawFilesList");
   const anaContainer = document.getElementById("analysisFilesList");
+  const opsContainer = document.getElementById("operationsFilesList");
 
   RAW_FILES.forEach((f) => rawContainer.appendChild(makeFileRow(f, handleRawFile)));
   ANALYSIS_FILES.forEach((f) => anaContainer.appendChild(makeFileRow(f, handleAnalysisFile)));
+  if (opsContainer) OPERATIONS_FILES.forEach((f) => opsContainer.appendChild(makeFileRow(f, handleAnalysisFile)));
 
   refreshStatusFromStorage();
 }
@@ -166,8 +185,10 @@ function handleFileInput(event, key) {
   if (!file) return;
   const rawMeta = RAW_FILES.find((f) => f.key === key);
   const anaMeta = ANALYSIS_FILES.find((f) => f.key === key);
+  const opsMeta = OPERATIONS_FILES.find((f) => f.key === key);
   if (rawMeta) handleRawFile(file, rawMeta);
   if (anaMeta) handleAnalysisFile(file, anaMeta);
+  if (opsMeta) handleAnalysisFile(file, opsMeta);
 }
 
 function setDot(key, state) {
@@ -230,7 +251,7 @@ function markUploaded(key, fileName) {
 
 async function refreshStatusFromStorage() {
   const data = await loadStoredData();
-  ANALYSIS_FILES.forEach((f) => {
+  [...ANALYSIS_FILES, ...OPERATIONS_FILES].forEach((f) => {
     if (data[f.key]) {
       setDot(f.key, "ok");
       markUploaded(f.key, data[f.key + "_fileName"] || "อัปโหลดแล้ว");
