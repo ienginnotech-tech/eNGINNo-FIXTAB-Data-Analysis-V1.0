@@ -55,6 +55,7 @@
       </p>
       <p style="color:var(--danger);font-size:12px">
         ⚠️ รองรับแล้ว: จัดหมวดอุปกรณ์ / แยกสัญญา PM / จำแนกลักษณะ Ticket / เกณฑ์ CAPEX-OPEX / Direct Match กับไฟล์งบ
+        <br/>✅ ใส่ไฟล์ Location.xlsx เพิ่ม จะได้ข้อมูลหน้า Work Request (จับคู่อาคาร/พื้นที่, MTTR, ค่าใช้จ่าย, ผลงานช่าง) ให้อัตโนมัติในขั้นตอนเดียวกันนี้เลย ไม่ต้องอัปโหลดไฟล์แยกที่ขั้นตอนที่ 3 อีก
         <br/>ยังไม่รองรับ: Fuzzy Match (การจับคู่แบบประมาณการ) — ถ้าต้องการตัวเลขส่วนนี้ ให้ใช้สคริปต์ Python ควบคู่ไปก่อน
       </p>
       <div class="grid cols-2" style="margin-top:12px">
@@ -67,9 +68,15 @@
           <input type="file" id="anPhaInput" accept=".xlsx" />
         </div>
       </div>
-      <div class="field">
-        <label>ไฟล์งบประมาณ / PR-PO Tracking (เลือกได้หลายไฟล์ ทุกปีที่มี — ไม่ใส่ก็ได้ ถ้าไม่ใส่จะข้าม Direct Match)</label>
-        <input type="file" id="anBudgetInput" accept=".xlsx" multiple />
+      <div class="grid cols-2">
+        <div class="field">
+          <label>ไฟล์งบประมาณ / PR-PO Tracking (เลือกได้หลายไฟล์ ทุกปีที่มี — ไม่ใส่ก็ได้ ถ้าไม่ใส่จะข้าม Direct Match)</label>
+          <input type="file" id="anBudgetInput" accept=".xlsx" multiple />
+        </div>
+        <div class="field">
+          <label>Location.xlsx (ไม่บังคับ — ใส่เพื่อให้หน้า Work Request ใช้งานได้)</label>
+          <input type="file" id="anLocationInput" accept=".xlsx" />
+        </div>
       </div>
       <button class="btn" onclick="runBrowserAnalysis(event)">▶ เริ่มวิเคราะห์</button>
       <div id="anProgress" style="margin-top:12px;font-size:13px;color:var(--text-muted)"></div>
@@ -77,9 +84,10 @@
 
     <div class="section-title">ขั้นตอนที่ 3</div>
     <div class="card" style="border-color:var(--accent-2)">
-      <h3>🛠️ ข้อมูล Work Request (สำหรับหน้า MTTR / ค่าใช้จ่าย / ผลงานช่าง)</h3>
+      <h3>🛠️ ข้อมูล Work Request (ทางเลือกเสริม — ไม่บังคับ)</h3>
       <p style="color:var(--text-muted);font-size:13px;margin-top:-6px">
-        อัปโหลดไฟล์ Main_data_fixtab_analysis_ENRICHED.xlsx (ที่มีคอลัมน์ X-AN) และ Location.xlsx เพื่อใช้ในหน้า Work Request
+        ✅ ถ้าใส่ไฟล์ Location.xlsx ไว้แล้วในขั้นตอนที่ 2 <b>ไม่ต้องทำขั้นตอนนี้อีก</b> — ระบบสร้างข้อมูล Work Request ให้อัตโนมัติแล้ว<br/>
+        ใช้ขั้นตอนนี้เฉพาะกรณีต้องการ "แทนที่" ด้วยไฟล์ที่ผ่านสคริปต์ Python มา (เช่น ต้องการความแม่นยำของการจับคู่ที่สูงกว่า)
       </p>
       <div id="operationsFilesList"></div>
       <div style="margin-top:16px">
