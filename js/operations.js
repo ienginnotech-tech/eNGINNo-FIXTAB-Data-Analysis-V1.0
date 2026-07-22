@@ -163,11 +163,14 @@ function groupSum(rows, keyFn, valFn) {
 
 function breakdownCardHTML(id, title, unitLabel) {
   return `
-    <div class="section-title" style="margin:16px 0 6px 0">${title}</div>
+    <div class="section-title" style="margin:14px 0 6px 0">${title}</div>
     <div class="grid cols-2" style="margin-bottom:4px">
-      <div class="card" style="padding:12px"><canvas id="chart_${id}" height="170"></canvas></div>
-      <div class="card" style="padding:0;overflow:auto;max-height:210px">
-        <table style="font-size:12px">
+      <div class="card" style="padding:10px;height:200px;box-sizing:border-box">
+        <div style="position:relative;width:100%;height:100%"><canvas id="chart_${id}"></canvas></div>
+      </div>
+      <div class="card" style="padding:0;overflow:auto;height:200px;box-sizing:border-box">
+        <table style="font-size:12px;table-layout:fixed;width:100%">
+          <colgroup><col style="width:70%"><col style="width:30%"></colgroup>
           <thead><tr><th>รายการ</th><th style="text-align:right">${unitLabel}</th></tr></thead>
           <tbody id="tbl_${id}"></tbody>
         </table>
@@ -181,7 +184,7 @@ function renderBreakdownChartAndTable(id, items, valueKey, color, maxItems) {
   const tbody = document.getElementById(`tbl_${id}`);
   if (tbody) {
     tbody.innerHTML = top.map((it) =>
-      `<tr><td>${it.label}</td><td class="mono" style="text-align:right">${fmtNumber(it[valueKey])}</td></tr>`
+      `<tr><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.label}</td><td class="mono" style="text-align:right">${fmtNumber(it[valueKey])}</td></tr>`
     ).join("") || `<tr><td colspan="2" class="empty">ไม่มีข้อมูล</td></tr>`;
   }
   const ctx = document.getElementById(`chart_${id}`);
@@ -193,6 +196,8 @@ function renderBreakdownChartAndTable(id, items, valueKey, color, maxItems) {
       datasets: [{ data: top.map((it) => it[valueKey]), backgroundColor: color }],
     },
     options: {
+      maintainAspectRatio: false,
+      responsive: true,
       indexAxis: "y",
       plugins: { legend: { display: false } },
       scales: {
@@ -242,17 +247,21 @@ function renderOpsJobList(rows) {
   });
   const showCount = Math.min(list.length, 500);
   card.innerHTML = `
-    <table style="font-size:12px">
+    <table style="font-size:12px;table-layout:fixed;width:100%">
+      <colgroup>
+        <col style="width:9%"><col style="width:9%"><col style="width:10%"><col style="width:18%">
+        <col style="width:12%"><col style="width:12%"><col style="width:30%">
+      </colgroup>
       <thead><tr><th>Status</th><th>Report Date</th><th>Ticket Number</th><th>Product Name</th><th>Issue Type</th><th>Ticket Type</th><th>Issue Detail</th></tr></thead>
       <tbody>
         ${list.slice(0, showCount).map((r) => `<tr>
           <td><span class="badge ${r[COL.status] === "Done" || r[COL.status] === "Closed" ? "approved" : r[COL.status] === "Rejected" ? "rejected" : "pending"}">${r[COL.status] || "-"}</span></td>
           <td class="mono">${r[COL.reportDate] || "-"}</td>
-          <td class="mono">${r[COL.ticket] || "-"}</td>
-          <td>${r[COL.building] && r[COL.building] !== "" ? r[COL.building] : (r["Product Name"] || "-")}</td>
-          <td>${r[COL.issueType] || "-"}</td>
-          <td>${r[COL.ticketType] || "-"}</td>
-          <td>${(r[COL.issueDetail] || "-").toString().slice(0, 120)}</td>
+          <td class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r[COL.ticket] || "-"}</td>
+          <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r[COL.building] && r[COL.building] !== "" ? r[COL.building] : (r["Product Name"] || "-")}</td>
+          <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r[COL.issueType] || "-"}</td>
+          <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r[COL.ticketType] || "-"}</td>
+          <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(r[COL.issueDetail] || "").toString().replace(/"/g, "&quot;")}">${(r[COL.issueDetail] || "-").toString().slice(0, 80)}</td>
         </tr>`).join("")}
         ${!list.length ? '<tr><td colspan="7" class="empty">ไม่พบข้อมูลตามตัวกรอง</td></tr>' : ""}
       </tbody>
@@ -375,10 +384,11 @@ function renderOperationsBody(rows) {
 
     <div class="section-title">ผลงานรายช่าง (Top 20)</div>
     <div class="card" style="padding:0;overflow:auto;max-height:280px">
-      <table style="font-size:12px">
+      <table style="font-size:12px;table-layout:fixed;width:100%">
+        <colgroup><col style="width:50%"><col style="width:25%"><col style="width:25%"></colgroup>
         <thead><tr><th>ชื่อช่าง</th><th style="text-align:right">จำนวนงาน</th><th style="text-align:right">MTTR เฉลี่ย (ชม.)</th></tr></thead>
         <tbody>
-          ${techRows.slice(0, 20).map((t) => `<tr><td>${t.name}</td><td class="mono" style="text-align:right">${fmtNumber(t.count)}</td><td class="mono" style="text-align:right">${t.avgMttr ? t.avgMttr.toFixed(1) : "-"}</td></tr>`).join("")}
+          ${techRows.slice(0, 20).map((t) => `<tr><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.name}</td><td class="mono" style="text-align:right">${fmtNumber(t.count)}</td><td class="mono" style="text-align:right">${t.avgMttr ? t.avgMttr.toFixed(1) : "-"}</td></tr>`).join("")}
           ${!techRows.length ? '<tr><td colspan="3" class="empty">ไม่มีข้อมูลช่าง</td></tr>' : ""}
         </tbody>
       </table>
@@ -386,10 +396,11 @@ function renderOperationsBody(rows) {
 
     <div class="section-title">จุด/ประเภทงานที่เสียซ้ำบ่อย (≥3 ครั้ง) — พร้อมสิ่งที่เสียซ้ำ (ประมาณการจากข้อความแจ้งซ่อม)</div>
     <div class="card" style="padding:0;overflow:auto;max-height:320px">
-      <table style="font-size:12px">
+      <table style="font-size:12px;table-layout:fixed;width:100%">
+        <colgroup><col style="width:28%"><col style="width:18%"><col style="width:14%"><col style="width:40%"></colgroup>
         <thead><tr><th>อาคาร/พื้นที่</th><th>ประเภทปัญหา</th><th style="text-align:right">จำนวนครั้ง</th><th>สิ่งที่เสียซ้ำบ่อยที่สุด (โดยประมาณ)</th></tr></thead>
         <tbody>
-          ${repeatList.map((r) => `<tr><td>${r.building}</td><td>${r.issueType}</td><td class="mono" style="text-align:right"><span class="badge rejected">${r.count}</span></td><td>${r.symptom}</td></tr>`).join("")}
+          ${repeatList.map((r) => `<tr><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.building}</td><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.issueType}</td><td class="mono" style="text-align:right"><span class="badge rejected">${r.count}</span></td><td>${r.symptom}</td></tr>`).join("")}
           ${!repeatList.length ? '<tr><td colspan="4" class="empty">ไม่พบจุดที่เสียซ้ำ ≥3 ครั้ง ในตัวกรองนี้</td></tr>' : ""}
         </tbody>
       </table>
