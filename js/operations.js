@@ -81,7 +81,12 @@ async function buildOperationsPage() {
   if (!mainData || !mainData.length) {
     main.innerHTML = `
       <div class="topbar"><div><div class="eyebrow">Work Request</div><h2>ภาพรวมงานปฏิบัติการ</h2></div></div>
-      <div class="card empty">ยังไม่มีข้อมูล — ไปที่ <a href="import.html">นำเข้าข้อมูล</a> แล้วอัปโหลดไฟล์ Main_data_fixtab_analysis_ENRICHED.xlsx ในขั้นตอนที่ 3</div>`;
+      <div class="card empty">
+        ยังไม่มีข้อมูล — ไปที่ <a href="import.html">นำเข้าข้อมูล</a> แล้วในขั้นตอนที่ 2
+        ("🧪 การวิเคราะห์ข้อมูล Fixtab + File สำคัญ") ใส่ไฟล์ Fixtab Export + PHA_report +
+        <b>Location.xlsx</b> แล้วกด "เริ่มวิเคราะห์" — ระบบจะสร้างข้อมูลหน้านี้ให้อัตโนมัติ
+        (ไม่ต้องอัปโหลดไฟล์แยกที่ขั้นตอนที่ 3 อีกแล้ว)
+      </div>`;
     return;
   }
 
