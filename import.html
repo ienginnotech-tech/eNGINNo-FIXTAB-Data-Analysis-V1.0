@@ -70,8 +70,12 @@
       <div id="anProgress" style="margin-top:12px;font-size:13px;color:var(--text-muted)"></div>
     </div>
 
-    <div class="section-title">หรือ ขั้นตอนที่ 2 (แบบเดิม)</div>
-    <div class="card">
+    <div class="section-title">
+      <a href="#" onclick="toggleLegacyImport(event)" id="legacyToggleLink" style="color:var(--text-muted);text-decoration:none">
+        ▸ ตัวเลือกเพิ่มเติม: นำเข้าจากไฟล์ที่รันด้วยสคริปต์ Python (มี Fuzzy Match ที่โหมดเบราว์เซอร์ยังไม่รองรับ)
+      </a>
+    </div>
+    <div class="card" id="legacyImportCard" style="display:none">
       <h3>ไฟล์ผลการวิเคราะห์ (4 ไฟล์) — จากสคริปต์ Python</h3>
       <p style="color:var(--text-muted);font-size:13px;margin-top:-6px">
         ไฟล์ผลลัพธ์จากการวิเคราะห์ — ระบบจะอ่านข้อมูลทั้งหมดเพื่อนำไปแสดงในหน้า Dashboard ทันที
