@@ -33,8 +33,13 @@
       </div>
     </div>
 
-    <div class="card">
-      <h3>ขั้นตอนที่ 1 — ไฟล์ข้อมูลต้นฉบับ (6 ไฟล์)</h3>
+    <div class="section-title">
+      <a href="#" onclick="toggleRawFiles(event)" id="rawFilesToggleLink" style="color:var(--text-muted);text-decoration:none">
+        ▸ ขั้นตอนที่ 1 — บันทึกประวัตินำเข้าไฟล์ต้นฉบับ (6 ไฟล์) — ไม่บังคับ
+      </a>
+    </div>
+    <div class="card" id="rawFilesCard" style="display:none">
+      <h3>ไฟล์ข้อมูลต้นฉบับ (6 ไฟล์)</h3>
       <p style="color:var(--text-muted);font-size:13px;margin-top:-6px">
         ไฟล์ดิบจาก Fixtab / D365 / งบประมาณ — ระบบจะบันทึกประวัติการนำเข้าไว้ให้ (ไม่ได้ใช้แสดงผลใน Dashboard โดยตรง
         เพราะต้องผ่านการวิเคราะห์ก่อน)
@@ -44,7 +49,7 @@
 
     <div class="section-title">ขั้นตอนที่ 2</div>
     <div class="card" style="border-color:var(--accent)">
-      <h3>🧪 วิเคราะห์ในเบราว์เซอร์ (Beta) — ไม่ต้องใช้ Python</h3>
+      <h3>🧪 การวิเคราะห์ข้อมูล Fixtab + File สำคัญ</h3>
       <p style="color:var(--text-muted);font-size:13px;margin-top:-6px">
         อัปโหลดแค่ 2 ไฟล์ (Fixtab Export + PHA_report) ระบบจะวิเคราะห์ให้ทันทีในเบราว์เซอร์ ไม่ต้องรันสคริปต์ Python เลย
       </p>
