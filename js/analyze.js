@@ -113,8 +113,104 @@ function anGroupBy(rows, keyFn) {
   return map;
 }
 
+function anExtractTicNumbers(text) {
+  const matches = [...text.matchAll(/TIC0*(\d+)/g)];
+  return matches.map((m) => parseInt(m[1], 10));
+}
+
+// ---------- Direct Match: อ่านไฟล์งบ/PR-PO Tracking หาเลข Fixtab Ticket ที่อ้างอิงตรง ----------
+async function findDirectMatchesJS(budgetFiles, fxRowsAll, onProgress) {
+  const prog = (msg) => { if (onProgress) onProgress(msg); };
+  const linkedRows = [];
+
+  for (const file of budgetFiles) {
+    prog(`กำลังอ่านไฟล์งบ: ${file.name}...`);
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array", cellDates: true });
+    for (const sheetName of wb.SheetNames) {
+      const ws = wb.Sheets[sheetName];
+      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+      let headerRowIdx = null;
+      for (let i = 0; i < Math.min(6, raw.length); i++) {
+        const joined = (raw[i] || []).filter((c) => c != null).map((c) => String(c).toLowerCase()).join(" ");
+        if (joined.includes("pr no") || joined.includes("description")) headerRowIdx = i;
+      }
+      if (headerRowIdx === null) continue;
+      const header = (raw[headerRowIdx] || []).map((h) => (h == null ? "" : String(h).toLowerCase().trim()));
+      const poNoCol = header.findIndex((h) => h.includes("po no") || h.includes("po number"));
+      const amountPoCol = header.findIndex((h) => h.includes("amount") && h.includes("po"));
+      const descCol = header.findIndex((h) => h.includes("description"));
+      if (descCol === -1) continue;
+      for (let r = headerRowIdx + 1; r < raw.length; r++) {
+        const row = raw[r];
+        if (!row) continue;
+        const desc = row[descCol];
+        if (typeof desc !== "string") continue;
+        const tics = anExtractTicNumbers(desc);
+        if (!tics.length) continue;
+        tics.forEach((tic) => {
+          linkedRows.push({
+            tic_num: tic,
+            po_no: poNoCol >= 0 ? row[poNoCol] : null,
+            amount_po: amountPoCol >= 0 ? row[amountPoCol] : null,
+            file: file.name, sheet: sheetName, description: desc,
+          });
+        });
+      }
+    }
+  }
+
+  prog(`พบเลข Ticket อ้างอิง ${linkedRows.length} รายการ — กำลังจับคู่กับ Fixtab...`);
+
+  const fxByTic = new Map();
+  fxRowsAll.forEach((r) => {
+    const m = String(r["Ticket Number"] || "").match(/TIC0*(\d+)/);
+    if (m) fxByTic.set(parseInt(m[1], 10), r);
+  });
+
+  const matchedGroups = new Map();
+  const unmatchedRaw = [];
+  linkedRows.forEach((lr) => {
+    const fxRow = fxByTic.get(lr.tic_num);
+    if (!fxRow) { unmatchedRaw.push(lr); return; }
+    const key = fxRow["Ticket Number"];
+    if (!matchedGroups.has(key)) {
+      matchedGroups.set(key, {
+        "Ticket Number": fxRow["Ticket Number"], "Branch Name": fxRow["Branch Name"],
+        "Company Name": fxRow["Company Name"], "Product Name": fxRow["Product Name"],
+        "Report Date": fxRow["Report Date"], "Status Ticket": fxRow["Status Ticket"], "Priority": fxRow["Priority"],
+        total_cost: 0, po_numbers: [],
+      });
+    }
+    const g = matchedGroups.get(key);
+    g.total_cost += Number(lr.amount_po) || 0;
+    if (lr.po_no) g.po_numbers.push(lr.po_no);
+  });
+
+  const linkedTickets = Array.from(matchedGroups.values()).map((g) => ({
+    "Ticket Number": g["Ticket Number"], "Branch Name": g["Branch Name"], "Company Name": g["Company Name"],
+    "Product Name": g["Product Name"], "Report Date": g["Report Date"], "Status Ticket": g["Status Ticket"],
+    "Priority": g["Priority"], "Total Repair Cost (THB)": g.total_cost, "No. of PO Lines": g.po_numbers.length,
+    "PO Number(s)": g.po_numbers.join(", "),
+  })).sort((a, b) => b["Total Repair Cost (THB)"] - a["Total Repair Cost (THB)"]);
+
+  const seenTic = new Set();
+  const dataGaps = [];
+  unmatchedRaw.forEach((u) => {
+    if (seenTic.has(u.tic_num)) return;
+    seenTic.add(u.tic_num);
+    dataGaps.push({
+      "Referenced Ticket No.": `TIC${String(u.tic_num).padStart(5, "0")}`,
+      "Source File": u.file, "Sheet": u.sheet, "Description": u.description,
+      "PO No.": u.po_no, "Amount (Baht)": u.amount_po,
+    });
+  });
+
+  return { linkedTickets, dataGaps };
+}
+
 // ---------- Main pipeline ----------
-async function analyzeRawFiles(fixtabFile, phaFile, onProgress) {
+async function analyzeRawFiles(fixtabFile, phaFile, budgetFiles, onProgress) {
   const prog = (msg) => { if (onProgress) onProgress(msg); };
 
   prog("กำลังอ่านไฟล์ Fixtab Export...");
@@ -237,6 +333,23 @@ async function analyzeRawFiles(fixtabFile, phaFile, onProgress) {
     "pct": doneTickets.length ? Number(((classCounts[c] || 0) / doneTickets.length * 100).toFixed(1)) : 0,
   }));
 
+  // Direct match กับไฟล์งบ/PR-PO Tracking (ถ้ามีไฟล์ให้)
+  let directResult = { linkedTickets: [], dataGaps: [] };
+  let directNote = ["โหมดวิเคราะห์ในเบราว์เซอร์ยังไม่รองรับ Direct match กับไฟล์ PR-PO Tracking — ใช้สคริปต์ Python (run_fixtab_analysis.py) ถ้าต้องการข้อมูลไฟล์นี้"];
+  if (budgetFiles && budgetFiles.length) {
+    directResult = await findDirectMatchesJS(budgetFiles, fxRows, prog);
+    directNote = [`Direct match จากไฟล์: ${budgetFiles.map((f) => f.name).join(", ")}`];
+  }
+
+  const nDirect = directResult.linkedTickets.length;
+  const totalDirectCost = directResult.linkedTickets.reduce((a, r) => a + r["Total Repair Cost (THB)"], 0);
+  const nFuzzy = 0; // Fuzzy match ยังไม่ได้พอร์ตเข้ามาเป็นส่วนหนึ่งของ comparisonSummary ในโหมดนี้
+
+  const comparisonSummary = budgetFiles && budgetFiles.length ? [
+    { "แนวทาง": "0. Direct match", "ผลลัพธ์": `${nDirect} Ticket — มูลค่ายืนยัน ${totalDirectCost.toLocaleString()} บาท`, "ระดับความเชื่อมั่น": "สูงมาก" },
+    { "แนวทาง": "2. Category-level", "ผลลัพธ์": `${taggedFx.length} Ticket ถูกจัดหมวดได้ เทียบค่าใช้จ่าย ${taggedRm.reduce((a, r) => a + (Number(r["NETAMOUNT"]) || 0), 0).toLocaleString()} บาท`, "ระดับความเชื่อมั่น": "แนวทิศทาง" },
+  ] : [];
+
   return {
     self_repair: {
       summary: summaryPct,
@@ -245,7 +358,7 @@ async function analyzeRawFiles(fixtabFile, phaFile, onProgress) {
       byCategory: [],
     },
     capex_opex: {
-      readMe: ["สร้างจากการวิเคราะห์ในเบราว์เซอร์ (Beta) — ยังไม่รวม Direct/Fuzzy match กับไฟล์ PR-PO"],
+      readMe: ["สร้างจากการวิเคราะห์ในเบราว์เซอร์ (Beta)"],
       knownAssets: [],
       categoryExtended,
       pmContractsExcluded,
@@ -255,17 +368,24 @@ async function analyzeRawFiles(fixtabFile, phaFile, onProgress) {
       rawOneoffCosts,
     },
     cost_2approaches: {
-      comparisonSummary: [],
+      comparisonSummary,
       categorySummary,
       fuzzyMatches: [],
-      confirmedMatches: [],
-      methodologyNotes: ["สร้างจากการวิเคราะห์ในเบราว์เซอร์ (Beta) — Direct/Fuzzy match ยังไม่รองรับ ใช้สคริปต์ Python ถ้าต้องการตัวเลขนี้"],
+      confirmedMatches: directResult.linkedTickets.map((r) => ({
+        "Ticket Number": r["Ticket Number"], "Branch Name": r["Branch Name"], "Product Name": r["Product Name"],
+        "Report Date": r["Report Date"], "Status Ticket": r["Status Ticket"], "Priority": r["Priority"],
+        "Total Cost (Baht)": r["Total Repair Cost (THB)"], "PO Number(s)": r["PO Number(s)"],
+      })),
+      methodologyNotes: directNote,
       rawTicketsByCategory,
       rawRMTransactions,
     },
     budget_linked: {
-      linkedTickets: [], byBranch: [], byProduct: [], dataGaps: [],
-      methodologyNotes: ["โหมดวิเคราะห์ในเบราว์เซอร์ยังไม่รองรับ Direct match กับไฟล์ PR-PO Tracking — ใช้สคริปต์ Python (run_fixtab_analysis.py) ถ้าต้องการข้อมูลไฟล์นี้"],
+      linkedTickets: directResult.linkedTickets,
+      byBranch: [],
+      byProduct: [],
+      dataGaps: directResult.dataGaps,
+      methodologyNotes: directNote,
     },
   };
 }

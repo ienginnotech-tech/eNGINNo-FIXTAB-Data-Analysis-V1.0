@@ -287,6 +287,7 @@ async function clearOutputData() {
 async function runBrowserAnalysis(event) {
   const fixtabInput = document.getElementById("anFixtabInput");
   const phaInput = document.getElementById("anPhaInput");
+  const budgetInput = document.getElementById("anBudgetInput");
   const progressBox = document.getElementById("anProgress");
 
   if (!fixtabInput.files[0] || !phaInput.files[0]) {
@@ -294,12 +295,14 @@ async function runBrowserAnalysis(event) {
     return;
   }
 
+  const budgetFiles = Array.from(budgetInput.files || []);
+
   const btn = event.target;
   btn.disabled = true;
   btn.textContent = "กำลังวิเคราะห์...";
 
   try {
-    const result = await analyzeRawFiles(fixtabInput.files[0], phaInput.files[0], (msg) => {
+    const result = await analyzeRawFiles(fixtabInput.files[0], phaInput.files[0], budgetFiles, (msg) => {
       progressBox.textContent = "⏳ " + msg;
     });
 
@@ -313,12 +316,11 @@ async function runBrowserAnalysis(event) {
     data.cost_2approaches = result.cost_2approaches;
     data.cost_2approaches_fileName = "วิเคราะห์ในเบราว์เซอร์ (Beta)";
     data.cost_2approaches_uploadedAt = new Date().toISOString();
-    // budget_linked: ไม่ทับของเดิมถ้ามีอยู่แล้วจาก Python (เพราะ Beta ยังไม่รองรับ Direct/Fuzzy match)
-    if (!data.budget_linked) {
-      data.budget_linked = result.budget_linked;
-      data.budget_linked_fileName = "วิเคราะห์ในเบราว์เซอร์ (Beta) — ยังไม่มี Direct/Fuzzy match";
-      data.budget_linked_uploadedAt = new Date().toISOString();
-    }
+    data.budget_linked = result.budget_linked;
+    data.budget_linked_fileName = budgetFiles.length
+      ? "วิเคราะห์ในเบราว์เซอร์ (Beta) — Direct Match"
+      : "วิเคราะห์ในเบราว์เซอร์ (Beta) — ไม่มีไฟล์งบ ข้าม Direct Match";
+    data.budget_linked_uploadedAt = new Date().toISOString();
 
     const ok = await saveStoredData(data);
     if (!ok) throw new Error("บันทึกข้อมูลไม่สำเร็จ (พื้นที่เก็บข้อมูลอาจเต็ม)");
@@ -326,11 +328,16 @@ async function runBrowserAnalysis(event) {
     setDot("self_repair", "ok"); markUploaded("self_repair", "Beta: วิเคราะห์ในเบราว์เซอร์");
     setDot("capex_opex", "ok"); markUploaded("capex_opex", "Beta: วิเคราะห์ในเบราว์เซอร์");
     setDot("cost_2approaches", "ok"); markUploaded("cost_2approaches", "Beta: วิเคราะห์ในเบราว์เซอร์");
+    setDot("budget_linked", "ok"); markUploaded("budget_linked", "Beta: วิเคราะห์ในเบราว์เซอร์");
 
-    progressBox.innerHTML = `✅ วิเคราะห์สำเร็จ! Ticket ที่จัดหมวดได้ ${result.cost_2approaches.rawTicketsByCategory.length.toLocaleString()} รายการ — <a href="dashboard.html">ไปที่ Dashboard →</a>`;
+    const directNote = budgetFiles.length
+      ? ` (จับคู่ Direct Match ได้ ${result.budget_linked.linkedTickets.length.toLocaleString()} Ticket)`
+      : " (ไม่ได้ใส่ไฟล์งบ — ข้าม Direct Match)";
+    progressBox.innerHTML = `✅ วิเคราะห์สำเร็จ! Ticket ที่จัดหมวดได้ ${result.cost_2approaches.rawTicketsByCategory.length.toLocaleString()} รายการ${directNote} — <a href="dashboard.html">ไปที่ Dashboard →</a>`;
 
     const session = getSession();
-    logUploadToBackend(fixtabInput.files[0].name + " + " + phaInput.files[0].name, "browser_analysis",
+    const allFileNames = [fixtabInput.files[0].name, phaInput.files[0].name, ...budgetFiles.map((f) => f.name)].join(" + ");
+    logUploadToBackend(allFileNames, "browser_analysis",
       result.cost_2approaches.rawTicketsByCategory.length, `วิเคราะห์ในเบราว์เซอร์โดย ${session ? session.username : "unknown"}`);
   } catch (err) {
     console.error(err);
