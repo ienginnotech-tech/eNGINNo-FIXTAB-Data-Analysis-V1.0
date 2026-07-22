@@ -283,6 +283,16 @@ async function clearOutputData() {
   alert("ล้างข้อมูลวิเคราะห์เรียบร้อย — Dashboard จะว่างจนกว่าจะอัปโหลดไฟล์ใหม่");
 }
 
+// ---------- ซ่อน/แสดง ตัวเลือกอัปโหลด 4 ไฟล์แบบเดิม (จากสคริปต์ Python) ----------
+function toggleLegacyImport(event) {
+  event.preventDefault();
+  const card = document.getElementById("legacyImportCard");
+  const link = document.getElementById("legacyToggleLink");
+  const isHidden = card.style.display === "none";
+  card.style.display = isHidden ? "block" : "none";
+  link.textContent = link.textContent.replace(isHidden ? "▸" : "▾", isHidden ? "▾" : "▸");
+}
+
 // ---------- วิเคราะห์ในเบราว์เซอร์ (Beta) — ไม่ต้องใช้ Python ----------
 async function runBrowserAnalysis(event) {
   const fixtabInput = document.getElementById("anFixtabInput");
