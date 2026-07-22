@@ -3,8 +3,8 @@
 // ==========================================================================
 
 const NAV_ITEMS = [
-  { href: "dashboard.html", label: "Dashboard", icon: "📊" },
-  { href: "operations.html", label: "Operations", icon: "🛠️" },
+  { href: "operations.html", label: "Work Request", icon: "🛠️" },
+  { href: "dashboard.html", label: "Data Analysis", icon: "📊" },
   { href: "import.html", label: "นำเข้าข้อมูล", icon: "📥" },
   { href: "admin.html", label: "Admin Management", icon: "🛡️", adminOnly: true },
   { href: "settings.html", label: "ตั้งค่า", icon: "⚙️" },

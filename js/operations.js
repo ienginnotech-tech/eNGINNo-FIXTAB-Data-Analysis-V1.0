@@ -38,6 +38,35 @@ const SYMPTOM_KEYWORDS = [
 
 let opsFilterCompany = "all";
 let opsFilterBranch = "all";
+let opsFilterYear = "all";
+let opsFilterMonth = "all";
+let opsFilterDay = "all";
+let opsJobStatusFilter = "all";
+
+const OPS_THAI_MONTHS = ["01-ม.ค.", "02-ก.พ.", "03-มี.ค.", "04-เม.ย.", "05-พ.ค.", "06-มิ.ย.",
+                          "07-ก.ค.", "08-ส.ค.", "09-ก.ย.", "10-ต.ค.", "11-พ.ย.", "12-ธ.ค."];
+
+function opsParseDate(v) {
+  if (!v) return null;
+  if (v instanceof Date && !isNaN(v)) return v;
+  if (typeof v === "string") {
+    const m = v.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/);
+    if (m) return new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
+    const iso = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (iso) return new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]));
+  }
+  return null;
+}
+
+function opsRowPassesDateFilter(r) {
+  if (opsFilterYear === "all" && opsFilterMonth === "all" && opsFilterDay === "all") return true;
+  const d = opsParseDate(r[COL.reportDate]);
+  if (!d) return true;
+  if (opsFilterYear !== "all" && d.getFullYear() !== parseInt(opsFilterYear)) return false;
+  if (opsFilterMonth !== "all" && d.getMonth() + 1 !== parseInt(opsFilterMonth)) return false;
+  if (opsFilterDay !== "all" && d.getDate() !== parseInt(opsFilterDay)) return false;
+  return true;
+}
 
 function onum(v) {
   const n = typeof v === "string" ? parseFloat(v.replace(/,/g, "")) : v;
@@ -51,7 +80,7 @@ async function buildOperationsPage() {
 
   if (!mainData || !mainData.length) {
     main.innerHTML = `
-      <div class="topbar"><div><div class="eyebrow">Operations</div><h2>ภาพรวมงานปฏิบัติการ</h2></div></div>
+      <div class="topbar"><div><div class="eyebrow">Work Request</div><h2>ภาพรวมงานปฏิบัติการ</h2></div></div>
       <div class="card empty">ยังไม่มีข้อมูล — ไปที่ <a href="import.html">นำเข้าข้อมูล</a> แล้วอัปโหลดไฟล์ Main_data_fixtab_analysis_ENRICHED.xlsx ในขั้นตอนที่ 3</div>`;
     return;
   }
@@ -64,20 +93,35 @@ async function buildOperationsPage() {
 
   const filtered = mainData.filter((r) =>
     (opsFilterCompany === "all" || r[COL.company] === opsFilterCompany) &&
-    (opsFilterBranch === "all" || r[COL.branch] === opsFilterBranch)
+    (opsFilterBranch === "all" || r[COL.branch] === opsFilterBranch) &&
+    opsRowPassesDateFilter(r)
   );
 
+  const years = Array.from(new Set(mainData.map((r) => { const d = opsParseDate(r[COL.reportDate]); return d ? d.getFullYear() : null; }).filter(Boolean))).sort((a, b) => b - a);
+
   main.innerHTML = `
-    <div class="topbar" style="margin-bottom:14px">
-      <div><div class="eyebrow">Operations</div><h2 style="font-size:19px">ภาพรวมงานปฏิบัติการ</h2></div>
-      <div style="display:flex;gap:8px">
+    <div class="topbar" style="margin-bottom:14px;flex-wrap:wrap">
+      <div><div class="eyebrow">Work Request</div><h2 style="font-size:19px">ภาพรวมงานปฏิบัติการ</h2></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <select id="opsCompanySel" style="width:auto;min-width:200px" onchange="onOpsCompanyChange(this.value)">
           <option value="all">ทุกบริษัท (All Company)</option>
           ${companies.map((c) => `<option value="${c}" ${opsFilterCompany === c ? "selected" : ""}>${c}</option>`).join("")}
         </select>
-        <select id="opsBranchSel" style="width:auto;min-width:180px" onchange="onOpsBranchChange(this.value)">
+        <select id="opsBranchSel" style="width:auto;min-width:160px" onchange="onOpsBranchChange(this.value)">
           <option value="all">ทุกสาขา (All Branch)</option>
           ${branchesForCompany(opsFilterCompany).map((b) => `<option value="${b}" ${opsFilterBranch === b ? "selected" : ""}>${b}</option>`).join("")}
+        </select>
+        <select id="opsYearSel" style="width:auto;min-width:90px" onchange="onOpsDateChange('year', this.value)">
+          <option value="all">ทุกปี</option>
+          ${years.map((y) => `<option value="${y}" ${opsFilterYear == y ? "selected" : ""}>ปี ${y}</option>`).join("")}
+        </select>
+        <select id="opsMonthSel" style="width:auto;min-width:100px" onchange="onOpsDateChange('month', this.value)">
+          <option value="all">ทุกเดือน</option>
+          ${OPS_THAI_MONTHS.map((m, i) => `<option value="${i + 1}" ${opsFilterMonth == i + 1 ? "selected" : ""}>${m}</option>`).join("")}
+        </select>
+        <select id="opsDaySel" style="width:auto;min-width:80px" onchange="onOpsDateChange('day', this.value)">
+          <option value="all">ทุกวัน</option>
+          ${Array.from({ length: 31 }, (_, i) => i + 1).map((d) => `<option value="${d}" ${opsFilterDay == d ? "selected" : ""}>วันที่ ${d}</option>`).join("")}
         </select>
         <button class="btn secondary small" onclick="buildOperationsPage()">↻ Refresh</button>
       </div>
@@ -86,6 +130,13 @@ async function buildOperationsPage() {
   `;
 
   renderOperationsBody(filtered);
+}
+
+function onOpsDateChange(kind, val) {
+  if (kind === "year") opsFilterYear = val;
+  if (kind === "month") opsFilterMonth = val;
+  if (kind === "day") opsFilterDay = val;
+  buildOperationsPage();
 }
 
 function onOpsCompanyChange(val) { opsFilterCompany = val; opsFilterBranch = "all"; buildOperationsPage(); }
@@ -164,7 +215,54 @@ function extractTopSymptom(issueDetailTexts) {
   return sorted.length ? `${sorted[0][0]} (${sorted[0][1]} ครั้ง)` : "-";
 }
 
+let opsCurrentRows = [];
+
+function onOpsJobStatusChange(val) {
+  opsJobStatusFilter = val;
+  renderOpsJobList(opsCurrentRows);
+}
+
+function onOpsStatusRowClick(statusLabel) {
+  opsJobStatusFilter = statusLabel;
+  const sel = document.getElementById("opsJobStatusSel");
+  if (sel) sel.value = statusLabel;
+  renderOpsJobList(opsCurrentRows);
+  const card = document.getElementById("opsJobListCard");
+  if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function renderOpsJobList(rows) {
+  const card = document.getElementById("opsJobListCard");
+  if (!card) return;
+  let list = opsJobStatusFilter === "all" ? rows : rows.filter((r) => r[COL.status] === opsJobStatusFilter);
+  list = list.slice().sort((a, b) => {
+    const da = opsParseDate(a[COL.reportDate]);
+    const db = opsParseDate(b[COL.reportDate]);
+    return (db ? db.getTime() : -Infinity) - (da ? da.getTime() : -Infinity);
+  });
+  const showCount = Math.min(list.length, 500);
+  card.innerHTML = `
+    <table style="font-size:12px">
+      <thead><tr><th>Status</th><th>Report Date</th><th>Ticket Number</th><th>Product Name</th><th>Issue Type</th><th>Ticket Type</th><th>Issue Detail</th></tr></thead>
+      <tbody>
+        ${list.slice(0, showCount).map((r) => `<tr>
+          <td><span class="badge ${r[COL.status] === "Done" || r[COL.status] === "Closed" ? "approved" : r[COL.status] === "Rejected" ? "rejected" : "pending"}">${r[COL.status] || "-"}</span></td>
+          <td class="mono">${r[COL.reportDate] || "-"}</td>
+          <td class="mono">${r[COL.ticket] || "-"}</td>
+          <td>${r[COL.building] && r[COL.building] !== "" ? r[COL.building] : (r["Product Name"] || "-")}</td>
+          <td>${r[COL.issueType] || "-"}</td>
+          <td>${r[COL.ticketType] || "-"}</td>
+          <td>${(r[COL.issueDetail] || "-").toString().slice(0, 120)}</td>
+        </tr>`).join("")}
+        ${!list.length ? '<tr><td colspan="7" class="empty">ไม่พบข้อมูลตามตัวกรอง</td></tr>' : ""}
+      </tbody>
+    </table>
+    ${list.length > showCount ? `<div style="padding:8px 12px;font-size:11px;color:var(--text-muted)">แสดง ${showCount.toLocaleString()} รายการแรกจากทั้งหมด ${list.length.toLocaleString()} รายการ — เลือกสถานะเพื่อกรองให้แคบลง</div>` : ""}
+  `;
+}
+
 function renderOperationsBody(rows) {
+  opsCurrentRows = rows;
   const body = document.getElementById("opsBody");
 
   const total = rows.length;
@@ -249,7 +347,16 @@ function renderOperationsBody(rows) {
       <div class="card kpi warn" style="padding:12px"><div class="label">งาน Priority สูง</div><div class="value" style="font-size:22px">${fmtNumber(highPriority)}</div><div class="sub">ต้องเร่งดำเนินการ</div></div>
     </div>
 
-    ${breakdownCardHTML("status", "สถานะงาน (Status Ticket)", "จำนวน")}
+    <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>รายละเอียดงาน (สำหรับติดตามกับแอดมิน/ช่าง)</span>
+      <select id="opsJobStatusSel" style="width:auto;min-width:150px" onchange="onOpsJobStatusChange(this.value)">
+        <option value="all">ทุกสถานะ</option>
+        ${statusBreakdown.map((s) => `<option value="${s.label}" ${opsJobStatusFilter === s.label ? "selected" : ""}>${s.label} (${s.count})</option>`).join("")}
+      </select>
+    </div>
+    <div class="card" id="opsJobListCard" style="padding:0;overflow:auto;max-height:320px"></div>
+
+    ${breakdownCardHTML("status", "สถานะงาน (Status Ticket) — คลิกแถวเพื่อดูรายละเอียดงานด้านบน", "จำนวน")}
     ${breakdownCardHTML("priority", "ระดับความสำคัญ (Priority)", "จำนวน")}
     ${breakdownCardHTML("issuetype", "ประเภทปัญหา (Issue Type)", "จำนวน")}
     ${breakdownCardHTML("tickettype", "ประเภทงาน (Ticket Type)", "จำนวน")}
@@ -293,6 +400,16 @@ function renderOperationsBody(rows) {
   `;
 
   renderBreakdownChartAndTable("status", statusBreakdown, "count", "#5B8DEF", 8);
+  // ทำให้แถวสถานะกดได้ (drill-down ไปตาราง Job List ด้านบน)
+  const statusTbody = document.getElementById("tbl_status");
+  if (statusTbody) {
+    Array.from(statusTbody.querySelectorAll("tr")).forEach((tr, idx) => {
+      const item = statusBreakdown[idx];
+      if (!item) return;
+      tr.style.cursor = "pointer";
+      tr.onclick = () => onOpsStatusRowClick(item.label);
+    });
+  }
   renderBreakdownChartAndTable("priority", priorityBreak, "count", "#E8A33D", 5);
   renderBreakdownChartAndTable("issuetype", issueTypeBreak, "count", "#3FA796", 10);
   renderBreakdownChartAndTable("tickettype", ticketTypeBreak, "count", "#B98CE0", 10);
@@ -300,4 +417,5 @@ function renderOperationsBody(rows) {
   renderBreakdownChartAndTable("area", areaBreak, "count", "#E0A24F", 10);
   renderBreakdownChartAndTable("costtype", costByIssueType, "value", "#D9685F", 10);
   renderBreakdownChartAndTable("anbucket", anBreak, "count", "#7A8CFF", 6);
+  renderOpsJobList(rows);
 }
