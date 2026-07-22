@@ -14,7 +14,6 @@ const RAW_FILES = [
 
 const OPERATIONS_FILES = [
   { key: "main_data", label: "Main_data_fixtab_analysis_ENRICHED.xlsx", parser: parseMainData },
-  { key: "location", label: "Location.xlsx", parser: parseLocationFile },
 ];
 
 function parseMainData(wb) {
