@@ -283,6 +283,16 @@ async function clearOutputData() {
   alert("ล้างข้อมูลวิเคราะห์เรียบร้อย — Dashboard จะว่างจนกว่าจะอัปโหลดไฟล์ใหม่");
 }
 
+// ---------- ซ่อน/แสดง ขั้นตอนที่ 1 (บันทึกประวัติไฟล์ต้นฉบับ) ----------
+function toggleRawFiles(event) {
+  event.preventDefault();
+  const card = document.getElementById("rawFilesCard");
+  const link = document.getElementById("rawFilesToggleLink");
+  const isHidden = card.style.display === "none";
+  card.style.display = isHidden ? "block" : "none";
+  link.textContent = link.textContent.replace(isHidden ? "▸" : "▾", isHidden ? "▾" : "▸");
+}
+
 // ---------- ซ่อน/แสดง ตัวเลือกอัปโหลด 4 ไฟล์แบบเดิม (จากสคริปต์ Python) ----------
 function toggleLegacyImport(event) {
   event.preventDefault();
