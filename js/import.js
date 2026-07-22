@@ -283,6 +283,64 @@ async function clearOutputData() {
   alert("ล้างข้อมูลวิเคราะห์เรียบร้อย — Dashboard จะว่างจนกว่าจะอัปโหลดไฟล์ใหม่");
 }
 
+// ---------- วิเคราะห์ในเบราว์เซอร์ (Beta) — ไม่ต้องใช้ Python ----------
+async function runBrowserAnalysis(event) {
+  const fixtabInput = document.getElementById("anFixtabInput");
+  const phaInput = document.getElementById("anPhaInput");
+  const progressBox = document.getElementById("anProgress");
+
+  if (!fixtabInput.files[0] || !phaInput.files[0]) {
+    alert("กรุณาเลือกไฟล์ให้ครบทั้ง 2 ไฟล์ (Fixtab Export และ PHA_report)");
+    return;
+  }
+
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = "กำลังวิเคราะห์...";
+
+  try {
+    const result = await analyzeRawFiles(fixtabInput.files[0], phaInput.files[0], (msg) => {
+      progressBox.textContent = "⏳ " + msg;
+    });
+
+    const data = await loadStoredData();
+    data.self_repair = result.self_repair;
+    data.self_repair_fileName = "วิเคราะห์ในเบราว์เซอร์ (Beta)";
+    data.self_repair_uploadedAt = new Date().toISOString();
+    data.capex_opex = result.capex_opex;
+    data.capex_opex_fileName = "วิเคราะห์ในเบราว์เซอร์ (Beta)";
+    data.capex_opex_uploadedAt = new Date().toISOString();
+    data.cost_2approaches = result.cost_2approaches;
+    data.cost_2approaches_fileName = "วิเคราะห์ในเบราว์เซอร์ (Beta)";
+    data.cost_2approaches_uploadedAt = new Date().toISOString();
+    // budget_linked: ไม่ทับของเดิมถ้ามีอยู่แล้วจาก Python (เพราะ Beta ยังไม่รองรับ Direct/Fuzzy match)
+    if (!data.budget_linked) {
+      data.budget_linked = result.budget_linked;
+      data.budget_linked_fileName = "วิเคราะห์ในเบราว์เซอร์ (Beta) — ยังไม่มี Direct/Fuzzy match";
+      data.budget_linked_uploadedAt = new Date().toISOString();
+    }
+
+    const ok = await saveStoredData(data);
+    if (!ok) throw new Error("บันทึกข้อมูลไม่สำเร็จ (พื้นที่เก็บข้อมูลอาจเต็ม)");
+
+    setDot("self_repair", "ok"); markUploaded("self_repair", "Beta: วิเคราะห์ในเบราว์เซอร์");
+    setDot("capex_opex", "ok"); markUploaded("capex_opex", "Beta: วิเคราะห์ในเบราว์เซอร์");
+    setDot("cost_2approaches", "ok"); markUploaded("cost_2approaches", "Beta: วิเคราะห์ในเบราว์เซอร์");
+
+    progressBox.innerHTML = `✅ วิเคราะห์สำเร็จ! Ticket ที่จัดหมวดได้ ${result.cost_2approaches.rawTicketsByCategory.length.toLocaleString()} รายการ — <a href="dashboard.html">ไปที่ Dashboard →</a>`;
+
+    const session = getSession();
+    logUploadToBackend(fixtabInput.files[0].name + " + " + phaInput.files[0].name, "browser_analysis",
+      result.cost_2approaches.rawTicketsByCategory.length, `วิเคราะห์ในเบราว์เซอร์โดย ${session ? session.username : "unknown"}`);
+  } catch (err) {
+    console.error(err);
+    progressBox.innerHTML = `<span style="color:var(--danger)">❌ วิเคราะห์ไม่สำเร็จ: ${err.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "▶ เริ่มวิเคราะห์";
+  }
+}
+
 async function clearAllData() {
   if (!confirm("ล้างข้อมูลทั้งหมด (ทั้ง Input และ Output)? การกระทำนี้ยกเลิกไม่ได้")) return;
   await clearStoredData();
