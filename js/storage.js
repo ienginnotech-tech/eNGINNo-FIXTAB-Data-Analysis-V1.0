@@ -52,11 +52,19 @@ async function idbDelete(key) {
   });
 }
 
-const DATA_KEY = "fixtab_data";
+const DATA_KEY_PREFIX = "fixtab_data";
+
+// ผูก key การเก็บข้อมูลกับ Username ที่ Login อยู่ (ไม่ใช่แค่ผูกกับเบราว์เซอร์เฉยๆ)
+// เพื่อให้สลับ user บนเครื่องเดียวกันแล้ว "ไม่เห็นข้อมูลของอีกคน" ปนกัน
+function getDataKey() {
+  const session = typeof getSession === "function" ? getSession() : null;
+  const username = session && session.username ? session.username : "guest";
+  return `${DATA_KEY_PREFIX}__${username}`;
+}
 
 async function loadStoredData() {
   try {
-    const data = await idbGet(DATA_KEY);
+    const data = await idbGet(getDataKey());
     return data || {};
   } catch (err) {
     console.error("โหลดข้อมูลจาก IndexedDB ไม่สำเร็จ:", err);
@@ -66,7 +74,7 @@ async function loadStoredData() {
 
 async function saveStoredData(data) {
   try {
-    await idbSet(DATA_KEY, data);
+    await idbSet(getDataKey(), data);
     return true;
   } catch (err) {
     console.error("บันทึกข้อมูลลง IndexedDB ไม่สำเร็จ:", err);
@@ -77,7 +85,7 @@ async function saveStoredData(data) {
 
 async function clearStoredData() {
   try {
-    await idbDelete(DATA_KEY);
+    await idbDelete(getDataKey());
     return true;
   } catch (err) {
     console.error("ล้างข้อมูลใน IndexedDB ไม่สำเร็จ:", err);
