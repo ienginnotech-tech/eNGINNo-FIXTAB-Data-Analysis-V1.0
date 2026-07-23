@@ -50,6 +50,9 @@
         </div>
       </div>
 
+      <div class="section-title">ซ่อน/แสดงส่วนต่างๆ ในแต่ละหน้า</div>
+      <div class="card" id="visibilityCard"></div>
+
       <div class="section-title">ชุดสีสำเร็จรูป</div>
       <div class="card">
         <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px" id="presetRow"></div>
@@ -89,7 +92,44 @@
       btn.onclick = () => { saveTheme({ ...getTheme(), ...p }); renderSettings(); };
       presetRow.appendChild(btn);
     });
+
+    renderVisibilityCard();
   }
+
+  function renderVisibilityCard() {
+    const card = document.getElementById("visibilityCard");
+    const settings = getVisibilitySettings();
+    let html = `<p style="color:var(--text-muted);font-size:13px;margin-top:-6px">ติ๊กออกเพื่อซ่อนส่วนนั้นในหน้าที่เกี่ยวข้อง (มีผลทันทีที่กดบันทึก)</p>`;
+    Object.entries(PAGE_SECTIONS).forEach(([pageKey, page]) => {
+      html += `<div style="margin-top:14px;font-weight:600;font-size:13px">${page.label}</div>`;
+      html += `<div class="grid cols-3" style="margin-top:6px">`;
+      page.sections.forEach((s) => {
+        const checked = settings[pageKey] && settings[pageKey][s.id] === false ? "" : "checked";
+        html += `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);font-weight:400">
+          <input type="checkbox" data-page="${pageKey}" data-section="${s.id}" ${checked} style="width:auto">
+          ${s.label}
+        </label>`;
+      });
+      html += `</div>`;
+    });
+    card.innerHTML = html;
+    card.insertAdjacentHTML("beforeend", `
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button class="btn" onclick="applyVisibilityForm()">บันทึกการแสดงผล</button>
+        <button class="btn secondary" onclick="resetVisibilitySettings(); renderSettings();">แสดงทั้งหมด (คืนค่าเริ่มต้น)</button>
+      </div>
+    `);
+  }
+
+  function applyVisibilityForm() {
+    const settings = {};
+    document.querySelectorAll('#visibilityCard input[type="checkbox"]').forEach((el) => {
+      const page = el.dataset.page, section = el.dataset.section;
+      if (!settings[page]) settings[page] = {};
+      settings[page][section] = el.checked;
+    });
+    saveVisibilitySettings(settings);
+    renderSettings();
 
   function applySlaForm() {
     const parseNum = (id, fallback) => {
