@@ -407,7 +407,22 @@ function renderOverviewTab(data) {
     capexFlagCount = fmtNumber(flagged.length);
   }
 
-  body.innerHTML = `
+  // ---- สรุปค่าใช้จ่ายจากไฟล์ทั้ง 4 (สำหรับ KPI สรุปย่อบนหน้าภาพรวม) ----
+  const selfRepairCount = filteredTickets.filter((r) => (r["กลุ่ม"] || "").includes("ช่างอาคารเอง")).length;
+  let categorySumAll = 0;
+  if (canFilterCategory) {
+    const ft = data.cost_2approaches.rawTicketsByCategory.filter(rowPassesFilter);
+    const fc = (data.cost_2approaches.rawRMTransactions || []).filter(rowPassesFilter);
+    categorySumAll = recomputeCategorySummary({ rawTicketsByCategory: ft, rawRMTransactions: fc })
+      .reduce((a, r) => a + num(r["ค่าใช้จ่ายที่ระบุหมวดได้ (บาท)"]), 0);
+  }
+  const oneoffSumAll = thresholdRowsForKPI ? thresholdRowsForKPI.reduce((a, r) => a + num(r["ค่าซ่อมรวม (บาท)"]), 0) : 0;
+
+  const V2 = (id) => isSectionVisible("capexopex", id);
+
+  const overviewParts = [];
+
+  overviewParts.push(`
     <div class="topbar">
       <div>
         <div class="eyebrow">CAPEX/OPEX Analysis</div>
@@ -417,8 +432,10 @@ function renderOverviewTab(data) {
         <button class="btn secondary" onclick="exportCombinedCSV()">⬇ Export CSV รวม</button>
         <button class="btn" onclick="exportCombinedJSON()">⬇ Export JSON รวม</button>
       </div>
-    </div>
+    </div>`);
 
+  if (V2("kpi")) {
+    overviewParts.push(`
     <div class="grid cols-4">
       <div class="card kpi">
         <div class="label">Ticket ที่ปิดงานแล้ว (วิเคราะห์ลักษณะการซ่อม)</div>
@@ -440,46 +457,83 @@ function renderOverviewTab(data) {
         <div class="value">${capexFlagCount}</div>
         <div class="sub">${canFilterThreshold ? "กรองตามช่วงเวลาที่เลือก" : "จาก Category Threshold (ทั้งช่วงเวลา)"}</div>
       </div>
-    </div>
+    </div>`);
+  }
 
+  if (V2("summary4")) {
+    overviewParts.push(`
+    <div class="section-title">สรุปค่าใช้จ่ายจากไฟล์ทั้ง 4 — กดแท็บด้านบนเพื่อดูรายละเอียดเต็ม</div>
+    <div class="grid cols-4">
+      <div class="card kpi" style="cursor:pointer" onclick="switchDashboardTab('budget_linked')">
+        <div class="label">1. Budget Linked (Direct Match)</div>
+        <div class="value mono" style="font-size:18px">${confirmedAmount} บาท</div>
+        <div class="sub">${confirmedCount} Ticket ยืนยันตรง</div>
+      </div>
+      <div class="card kpi" style="cursor:pointer" onclick="switchDashboardTab('cost_2approaches')">
+        <div class="label">2. Cost 2 Approaches (รวม PM)</div>
+        <div class="value mono" style="font-size:18px">${fmtNumber(categorySumAll)} บาท</div>
+        <div class="sub">รวมทุกหมวดอุปกรณ์</div>
+      </div>
+      <div class="card kpi" style="cursor:pointer" onclick="switchDashboardTab('self_repair')">
+        <div class="label">3. Self Repair vs Procured</div>
+        <div class="value mono" style="font-size:18px">${fmtNumber(selfRepairCount)} Ticket</div>
+        <div class="sub">ซ่อมเองไม่มีค่าใช้จ่าย</div>
+      </div>
+      <div class="card kpi" style="cursor:pointer" onclick="switchDashboardTab('capex_opex')">
+        <div class="label">4. CAPEX/OPEX Framework (คัด PM ออก)</div>
+        <div class="value mono" style="font-size:18px">${fmtNumber(oneoffSumAll)} บาท</div>
+        <div class="sub">ค่าซ่อมต่อครั้งรวมทุกหมวด</div>
+      </div>
+    </div>`);
+  }
+
+  if (V2("classification")) {
+    overviewParts.push(`
     <div class="section-title">การจำแนกลักษณะ Ticket ที่ซ่อมเสร็จ${filtering && rawTickets.length ? " (ตามช่วงเวลาที่กรอง)" : ""}</div>
     <div class="grid cols-2">
-      <div class="card">
-        <canvas id="chartClassification" height="220"></canvas>
+      <div class="card" style="padding:10px;height:220px;box-sizing:border-box">
+        <div style="position:relative;width:100%;height:100%"><canvas id="chartClassification"></canvas></div>
       </div>
-      <div class="card" style="overflow:auto;max-height:320px">
+      <div class="card" style="overflow:auto;height:220px;box-sizing:border-box">
         <table id="tblClassification"><thead><tr><th>กลุ่ม</th><th>จำนวน</th><th>%</th></tr></thead><tbody></tbody></table>
       </div>
-    </div>
+    </div>`);
+  }
 
+  if (V2("categorychart")) {
+    overviewParts.push(`
     <div class="section-title">ค่าซ่อมต่อครั้ง แยกตามหมวดอุปกรณ์ (ไม่รวมสัญญา PM รายปี)${canFilterThreshold ? (filtering ? " — กรองตามช่วงเวลาที่เลือก" : "") : " — ข้อมูลทั้งช่วงเวลา (ไฟล์นี้ยังไม่มีข้อมูลดิบพร้อมวันที่)"}</div>
-    <div class="card">
-      <canvas id="chartCategory" height="110"></canvas>
-    </div>
+    <div class="card" style="padding:10px;height:200px;box-sizing:border-box">
+      <div style="position:relative;width:100%;height:100%"><canvas id="chartCategory"></canvas></div>
+    </div>`);
+  }
 
+  if (V2("threshold")) {
+    overviewParts.push(`
     <div class="section-title">เกณฑ์ CAPEX vs OPEX รายหมวดอุปกรณ์${canFilterThreshold ? (filtering ? " — กรองตามช่วงเวลาที่เลือก" : "") : " — ข้อมูลทั้งช่วงเวลา"}</div>
     <div class="card" style="overflow:auto">
       <table id="tblThreshold">
         <thead><tr><th>หมวดอุปกรณ์</th><th>Ticket</th><th>ค่าซ่อมเฉลี่ย/ครั้ง</th><th>ราคาเครื่องใหม่</th><th>%</th><th>คำแนะนำ</th></tr></thead>
         <tbody></tbody>
       </table>
-    </div>
-  `;
-
-  renderClassification(data, filteredTickets);
-
-  // กราฟ Category: ใช้ข้อมูลดิบที่กรองแล้วถ้ามี ไม่งั้น fallback เป็นตารางสรุปนิ่งทั้งช่วงเวลา
-  // กราฟ Category "ไม่รวมสัญญา PM รายปี" — ควรใช้ข้อมูลจากไฟล์ CAPEX/OPEX (คัด PM ออกแล้ว) เป็นหลัก
-  // ถ้าไม่มีไฟล์นั้น ค่อย fallback ไปใช้ cost_2approaches (ซึ่งรวม PM ด้วย — จะมีหมายเหตุกำกับให้ชัดเจน)
-  let catRowsForChart = thresholdRowsForKPI;
-  if (!catRowsForChart && canFilterCategory) {
-    const ft = data.cost_2approaches.rawTicketsByCategory.filter(rowPassesFilter);
-    const fc = (data.cost_2approaches.rawRMTransactions || []).filter(rowPassesFilter);
-    catRowsForChart = recomputeCategorySummary({ rawTicketsByCategory: ft, rawRMTransactions: fc });
+    </div>`);
   }
-  renderCategoryChart(data, catRowsForChart);
 
-  renderThresholdTable(data, thresholdRowsForKPI);
+  body.innerHTML = overviewParts.join("\n");
+
+  if (V2("classification")) renderClassification(data, filteredTickets);
+
+  if (V2("categorychart")) {
+    let catRowsForChart = thresholdRowsForKPI;
+    if (!catRowsForChart && canFilterCategory) {
+      const ft = data.cost_2approaches.rawTicketsByCategory.filter(rowPassesFilter);
+      const fc = (data.cost_2approaches.rawRMTransactions || []).filter(rowPassesFilter);
+      catRowsForChart = recomputeCategorySummary({ rawTicketsByCategory: ft, rawRMTransactions: fc });
+    }
+    renderCategoryChart(data, catRowsForChart);
+  }
+
+  if (V2("threshold")) renderThresholdTable(data, thresholdRowsForKPI);
 }
 
 function renderClassification(data, filteredTickets) {
@@ -525,7 +579,9 @@ function renderClassification(data, filteredTickets) {
     type: "doughnut",
     data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 0 }] },
     options: {
-      plugins: { legend: { position: "bottom", labels: { color: "#8A97A6", boxWidth: 12, font: { size: 10 } } } },
+      maintainAspectRatio: false,
+      responsive: true,
+      plugins: { legend: { position: "bottom", labels: { color: "#8A97A6", boxWidth: 10, font: { size: 9 } } } },
     },
   });
 }
@@ -546,11 +602,13 @@ function renderCategoryChart(data, overrideRows) {
     type: "bar",
     data: { labels, datasets: [{ label: "ค่าซ่อมรวม (บาท)", data: values, backgroundColor: "#E8A33D" }] },
     options: {
+      maintainAspectRatio: false,
+      responsive: true,
       indexAxis: "y",
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { color: "#8A97A6" }, grid: { color: "#2A3746" } },
-        y: { ticks: { color: "#8A97A6", font: { size: 10 } }, grid: { display: false } },
+        x: { ticks: { color: "#8A97A6", font: { size: 9 } }, grid: { color: "#2A3746" } },
+        y: { ticks: { color: "#8A97A6", font: { size: 9 } }, grid: { display: false } },
       },
     },
   });

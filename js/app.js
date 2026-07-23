@@ -106,6 +106,63 @@ function resetSlaSettings() {
   localStorage.removeItem(SLA_KEY);
 }
 
+// ---------- Visibility (ซ่อน/แสดงส่วนต่างๆ) — ใช้ร่วมกันทุกหน้า ----------
+const VISIBILITY_KEY = "fixtab_visibility_settings";
+
+function getVisibilitySettings() {
+  const raw = localStorage.getItem(VISIBILITY_KEY);
+  if (!raw) return {};
+  try { return JSON.parse(raw); } catch { return {}; }
+}
+
+function saveVisibilitySettings(settings) {
+  localStorage.setItem(VISIBILITY_KEY, JSON.stringify(settings));
+}
+
+function resetVisibilitySettings() {
+  localStorage.removeItem(VISIBILITY_KEY);
+}
+
+// เช็คว่า section นี้ถูกซ่อนไว้ไหม (default = แสดง ถ้ายังไม่เคยตั้งค่า)
+function isSectionVisible(pageKey, sectionId) {
+  const settings = getVisibilitySettings();
+  if (!settings[pageKey]) return true;
+  return settings[pageKey][sectionId] !== false;
+}
+
+// รายการ section ที่ซ่อน/แสดงได้ต่อหน้า (ใช้ทั้งในหน้า ตั้งค่า และหน้าที่เกี่ยวข้อง)
+const PAGE_SECTIONS = {
+  workrequest: {
+    label: "Work Request",
+    sections: [
+      { id: "kpi", label: "KPI หลัก (WR ทั้งหมด / MTTR / Maintainability / Priority สูง)" },
+      { id: "statuspct", label: "สัดส่วนสถานะงาน (แถบเปอร์เซ็นต์)" },
+      { id: "joblist", label: "ตารางรายละเอียดงาน" },
+      { id: "status", label: "สถานะงาน (Status Ticket)" },
+      { id: "priority", label: "ระดับความสำคัญ (Priority)" },
+      { id: "issuetype", label: "ประเภทปัญหา (Issue Type)" },
+      { id: "tickettype", label: "ประเภทงาน (Ticket Type)" },
+      { id: "building", label: "อาคาร (จับคู่ Location)" },
+      { id: "area", label: "พื้นที่ (จับคู่ Area)" },
+      { id: "costtype", label: "ค่าใช้จ่ายรวม แยกตามประเภทปัญหา" },
+      { id: "anbucket", label: "การกระจายจำนวนครั้งที่เสียซ้ำ" },
+      { id: "costsummary", label: "ค่าใช้จ่ายรวม แยกตามหมวดต้นทุน" },
+      { id: "techperf", label: "ผลงานรายช่าง" },
+      { id: "repeat", label: "จุด/ประเภทงานที่เสียซ้ำบ่อย" },
+    ],
+  },
+  capexopex: {
+    label: "CAPEX/OPEX Analysis",
+    sections: [
+      { id: "kpi", label: "KPI หลัก 4 ช่อง" },
+      { id: "summary4", label: "สรุปค่าใช้จ่ายจากไฟล์ทั้ง 4" },
+      { id: "classification", label: "การจำแนกลักษณะ Ticket ที่ซ่อมเสร็จ" },
+      { id: "categorychart", label: "ค่าซ่อมต่อครั้ง แยกตามหมวดอุปกรณ์" },
+      { id: "threshold", label: "เกณฑ์ CAPEX vs OPEX รายหมวดอุปกรณ์" },
+    ],
+  },
+};
+
 function fmtNumber(n) {
   if (n === null || n === undefined || isNaN(n)) return "-";
   return Number(n).toLocaleString("th-TH", { maximumFractionDigits: 0 });

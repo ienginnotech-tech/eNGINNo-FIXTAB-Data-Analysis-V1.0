@@ -165,12 +165,17 @@ function groupSum(rows, keyFn, valFn) {
   return Array.from(map.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
 }
 
+const OPS_PALETTE = ["#5B8DEF", "#E8A33D", "#3FA796", "#D9685F", "#B98CE0", "#4FC3E0", "#E0A24F", "#7A8CFF", "#5BD1A0", "#E0625B"];
+
 function breakdownCardHTML(id, title, unitLabel) {
   return `
     <div class="section-title" style="margin:14px 0 6px 0">${title}</div>
-    <div class="grid cols-2" style="margin-bottom:4px">
+    <div class="grid cols-3" style="margin-bottom:4px">
       <div class="card" style="padding:10px;height:200px;box-sizing:border-box">
         <div style="position:relative;width:100%;height:100%"><canvas id="chart_${id}"></canvas></div>
+      </div>
+      <div class="card" style="padding:10px;height:200px;box-sizing:border-box">
+        <div style="position:relative;width:100%;height:100%"><canvas id="donut_${id}"></canvas></div>
       </div>
       <div class="card" style="padding:0;overflow:auto;height:200px;box-sizing:border-box">
         <table style="font-size:12px;table-layout:fixed;width:100%">
@@ -183,6 +188,37 @@ function breakdownCardHTML(id, title, unitLabel) {
   `;
 }
 
+function renderDonut(canvasId, items, valueKey, maxItems) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  const top = items.slice(0, maxItems || 6);
+  const total = items.reduce((a, it) => a + it[valueKey], 0);
+  const rest = total - top.reduce((a, it) => a + it[valueKey], 0);
+  const labels = top.map((it) => it.label.length > 16 ? it.label.slice(0, 14) + "…" : it.label);
+  const values = top.map((it) => it[valueKey]);
+  if (rest > 0) { labels.push("อื่นๆ"); values.push(rest); }
+  new Chart(ctx, {
+    type: "doughnut",
+    data: { labels, datasets: [{ data: values, backgroundColor: OPS_PALETTE, borderWidth: 0 }] },
+    options: {
+      maintainAspectRatio: false,
+      responsive: true,
+      plugins: {
+        legend: { position: "bottom", labels: { color: "#8A97A6", font: { size: 8 }, boxWidth: 8, padding: 4 } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const v = ctx.parsed;
+              const pct = total ? ((v / total) * 100).toFixed(1) : 0;
+              return `${ctx.label}: ${fmtNumber(v)} (${pct}%)`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
 function renderBreakdownChartAndTable(id, items, valueKey, color, maxItems) {
   const top = items.slice(0, maxItems || 10);
   const tbody = document.getElementById(`tbl_${id}`);
@@ -192,24 +228,26 @@ function renderBreakdownChartAndTable(id, items, valueKey, color, maxItems) {
     ).join("") || `<tr><td colspan="2" class="empty">ไม่มีข้อมูล</td></tr>`;
   }
   const ctx = document.getElementById(`chart_${id}`);
-  if (!ctx) return;
-  new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels: top.map((it) => (it.label.length > 22 ? it.label.slice(0, 20) + "…" : it.label)),
-      datasets: [{ data: top.map((it) => it[valueKey]), backgroundColor: color }],
-    },
-    options: {
-      maintainAspectRatio: false,
-      responsive: true,
-      indexAxis: "y",
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { color: "#8A97A6", font: { size: 9 } }, grid: { color: "#2A3746" } },
-        y: { ticks: { color: "#8A97A6", font: { size: 9 } }, grid: { display: false } },
+  if (ctx) {
+    new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: top.map((it) => (it.label.length > 22 ? it.label.slice(0, 20) + "…" : it.label)),
+        datasets: [{ data: top.map((it) => it[valueKey]), backgroundColor: color }],
       },
-    },
-  });
+      options: {
+        maintainAspectRatio: false,
+        responsive: true,
+        indexAxis: "y",
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "#8A97A6", font: { size: 9 } }, grid: { color: "#2A3746" } },
+          y: { ticks: { color: "#8A97A6", font: { size: 9 } }, grid: { display: false } },
+        },
+      },
+    });
+  }
+  renderDonut(`donut_${id}`, items, valueKey, maxItems);
 }
 
 function extractTopSymptom(issueDetailTexts) {
@@ -353,14 +391,36 @@ function renderOperationsBody(rows) {
     .sort((a, b) => b.count - a.count)
     .slice(0, 15);
 
-  body.innerHTML = `
+  const V = (id) => isSectionVisible("workrequest", id);
+
+  const statusPct = statusBreakdown.map((s) => ({ label: s.label, count: s.count, pct: total ? (s.count / total * 100) : 0 }));
+
+  const parts = [];
+
+  if (V("kpi")) {
+    parts.push(`
     <div class="grid cols-4">
       <div class="card kpi" style="padding:12px"><div class="label">Work Request ทั้งหมด</div><div class="value" style="font-size:22px">${fmtNumber(total)}</div><div class="sub">Open ${fmtNumber(open)} / In Progress ${fmtNumber(inProgress)} / Closed ${fmtNumber(closed)}</div></div>
       <div class="card kpi ${avgMttr && avgMttr < 24 ? "ok" : "warn"}" style="padding:12px"><div class="label">MTTR เฉลี่ย</div><div class="value" style="font-size:22px">${avgMttr ? avgMttr.toFixed(1) + " ชม." : "-"}</div><div class="sub">Response เฉลี่ย ${avgResp ? avgResp.toFixed(1) + " ชม." : "-"}</div></div>
       <div class="card kpi ${maintainability && maintainability >= 70 ? "ok" : "warn"}" style="padding:12px"><div class="label">Maintainability</div><div class="value" style="font-size:22px">${maintainability ? maintainability.toFixed(1) + "%" : "-"}</div><div class="sub">M = 1-e^(-Target/MTTR)</div></div>
       <div class="card kpi warn" style="padding:12px"><div class="label">งาน Priority สูง</div><div class="value" style="font-size:22px">${fmtNumber(highPriority)}</div><div class="sub">ต้องเร่งดำเนินการ</div></div>
-    </div>
+    </div>`);
+  }
 
+  if (V("statuspct")) {
+    parts.push(`
+    <div class="grid" style="grid-template-columns:repeat(${Math.max(statusPct.length, 1)}, 1fr);gap:10px;margin-top:10px">
+      ${statusPct.map((s) => `
+        <div class="card" style="padding:10px;text-align:center">
+          <div class="label" style="font-size:11px">${s.label}</div>
+          <div class="value mono" style="font-size:18px">${s.pct.toFixed(1)}%</div>
+          <div class="sub">${fmtNumber(s.count)} Ticket</div>
+        </div>`).join("")}
+    </div>`);
+  }
+
+  if (V("joblist")) {
+    parts.push(`
     <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
       <span>รายละเอียดงาน (สำหรับติดตามกับแอดมิน/ช่าง)</span>
       <select id="opsJobStatusSel" style="width:auto;min-width:150px" onchange="onOpsJobStatusChange(this.value)">
@@ -368,70 +428,100 @@ function renderOperationsBody(rows) {
         ${statusBreakdown.map((s) => `<option value="${s.label}" ${opsJobStatusFilter === s.label ? "selected" : ""}>${s.label} (${s.count})</option>`).join("")}
       </select>
     </div>
-    <div class="card" id="opsJobListCard" style="padding:0;overflow:auto;max-height:320px"></div>
+    <div class="card" id="opsJobListCard" style="padding:0;overflow:auto;max-height:320px"></div>`);
+  }
 
-    ${breakdownCardHTML("status", "สถานะงาน (Status Ticket) — คลิกแถวเพื่อดูรายละเอียดงานด้านบน", "จำนวน")}
-    ${breakdownCardHTML("priority", "ระดับความสำคัญ (Priority)", "จำนวน")}
-    ${breakdownCardHTML("issuetype", "ประเภทปัญหา (Issue Type)", "จำนวน")}
-    ${breakdownCardHTML("tickettype", "ประเภทงาน (Ticket Type)", "จำนวน")}
-    ${breakdownCardHTML("building", "อาคาร (จับคู่ Location)", "จำนวน")}
-    ${breakdownCardHTML("area", "พื้นที่ (จับคู่ Area)", "จำนวน")}
-    ${breakdownCardHTML("costtype", "ค่าใช้จ่ายรวม แยกตามประเภทปัญหา", "บาท")}
-    ${breakdownCardHTML("anbucket", "การกระจายจำนวนครั้งที่เสียซ้ำ (AN)", "จำนวน Ticket")}
+  if (V("status")) parts.push(breakdownCardHTML("status", "สถานะงาน (Status Ticket) — คลิกแถวเพื่อดูรายละเอียดงานด้านบน", "จำนวน"));
+  if (V("priority")) parts.push(breakdownCardHTML("priority", "ระดับความสำคัญ (Priority)", "จำนวน"));
+  if (V("issuetype")) parts.push(breakdownCardHTML("issuetype", "ประเภทปัญหา (Issue Type)", "จำนวน"));
+  if (V("tickettype")) parts.push(breakdownCardHTML("tickettype", "ประเภทงาน (Ticket Type)", "จำนวน"));
+  if (V("building")) parts.push(breakdownCardHTML("building", "อาคาร (จับคู่ Location)", "จำนวน"));
+  if (V("area")) parts.push(breakdownCardHTML("area", "พื้นที่ (จับคู่ Area)", "จำนวน"));
+  if (V("costtype")) parts.push(breakdownCardHTML("costtype", "ค่าใช้จ่ายรวม แยกตามประเภทปัญหา", "บาท"));
+  if (V("anbucket")) parts.push(breakdownCardHTML("anbucket", "การกระจายจำนวนครั้งที่เสียซ้ำ (AN)", "จำนวน Ticket"));
 
+  if (V("costsummary")) {
+    parts.push(`
     <div class="section-title">ค่าใช้จ่ายรวม แยกตามหมวดต้นทุน</div>
     <div class="grid cols-4">
       <div class="card kpi" style="padding:10px"><div class="label">รวมทั้งหมด</div><div class="value mono" style="font-size:17px">${fmtNumber(costTotal)}</div></div>
       <div class="card" style="padding:10px"><div class="label">ค่าแรงช่างอาคาร</div><div class="value mono" style="font-size:15px">${fmtNumber(costAH)}</div></div>
       <div class="card" style="padding:10px"><div class="label">ค่าแรง+ค่าซ่อมผู้รับเหมา</div><div class="value mono" style="font-size:15px">${fmtNumber(costAI + costAK)}</div></div>
       <div class="card" style="padding:10px"><div class="label">ค่าอะไหล่+ค่าบริหาร</div><div class="value mono" style="font-size:15px">${fmtNumber(costAJ + costAL)}</div></div>
-    </div>
+    </div>`);
+  }
 
+  if (V("techperf")) {
+    parts.push(`
     <div class="section-title">ผลงานรายช่าง (Top 20)</div>
-    <div class="card" style="padding:0;overflow:auto;max-height:280px">
-      <table style="font-size:12px;table-layout:fixed;width:100%">
-        <colgroup><col style="width:50%"><col style="width:25%"><col style="width:25%"></colgroup>
-        <thead><tr><th>ชื่อช่าง</th><th style="text-align:right">จำนวนงาน</th><th style="text-align:right">MTTR เฉลี่ย (ชม.)</th></tr></thead>
-        <tbody>
-          ${techRows.slice(0, 20).map((t) => `<tr><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.name}</td><td class="mono" style="text-align:right">${fmtNumber(t.count)}</td><td class="mono" style="text-align:right">${t.avgMttr ? t.avgMttr.toFixed(1) : "-"}</td></tr>`).join("")}
-          ${!techRows.length ? '<tr><td colspan="3" class="empty">ไม่มีข้อมูลช่าง</td></tr>' : ""}
-        </tbody>
-      </table>
-    </div>
+    <div class="grid cols-3" style="margin-bottom:4px">
+      <div class="card" style="padding:10px;height:200px;box-sizing:border-box"><div style="position:relative;width:100%;height:100%"><canvas id="chart_techperf"></canvas></div></div>
+      <div class="card" style="padding:10px;height:200px;box-sizing:border-box"><div style="position:relative;width:100%;height:100%"><canvas id="donut_techperf"></canvas></div></div>
+      <div class="card" style="padding:0;overflow:auto;height:200px;box-sizing:border-box">
+        <table style="font-size:12px;table-layout:fixed;width:100%">
+          <colgroup><col style="width:50%"><col style="width:25%"><col style="width:25%"></colgroup>
+          <thead><tr><th>ชื่อช่าง</th><th style="text-align:right">จำนวนงาน</th><th style="text-align:right">MTTR (ชม.)</th></tr></thead>
+          <tbody>
+            ${techRows.slice(0, 20).map((t) => `<tr><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.name}</td><td class="mono" style="text-align:right">${fmtNumber(t.count)}</td><td class="mono" style="text-align:right">${t.avgMttr ? t.avgMttr.toFixed(1) : "-"}</td></tr>`).join("")}
+            ${!techRows.length ? '<tr><td colspan="3" class="empty">ไม่มีข้อมูลช่าง</td></tr>' : ""}
+          </tbody>
+        </table>
+      </div>
+    </div>`);
+  }
 
+  if (V("repeat")) {
+    parts.push(`
     <div class="section-title">จุด/ประเภทงานที่เสียซ้ำบ่อย (≥3 ครั้ง) — พร้อมสิ่งที่เสียซ้ำ (ประมาณการจากข้อความแจ้งซ่อม)</div>
-    <div class="card" style="padding:0;overflow:auto;max-height:320px">
-      <table style="font-size:12px;table-layout:fixed;width:100%">
-        <colgroup><col style="width:28%"><col style="width:18%"><col style="width:14%"><col style="width:40%"></colgroup>
-        <thead><tr><th>อาคาร/พื้นที่</th><th>ประเภทปัญหา</th><th style="text-align:right">จำนวนครั้ง</th><th>สิ่งที่เสียซ้ำบ่อยที่สุด (โดยประมาณ)</th></tr></thead>
-        <tbody>
-          ${repeatList.map((r) => `<tr><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.building}</td><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.issueType}</td><td class="mono" style="text-align:right"><span class="badge rejected">${r.count}</span></td><td>${r.symptom}</td></tr>`).join("")}
-          ${!repeatList.length ? '<tr><td colspan="4" class="empty">ไม่พบจุดที่เสียซ้ำ ≥3 ครั้ง ในตัวกรองนี้</td></tr>' : ""}
-        </tbody>
-      </table>
-      <div style="padding:8px 12px;font-size:11px;color:var(--text-muted)">
-        ⚠️ คอลัมน์ "สิ่งที่เสียซ้ำ" เป็นการค้นคำสำคัญ (เช่น ก๊อกน้ำ, หลอดไฟ) จากข้อความแจ้งซ่อมในกลุ่มเดียวกัน เป็นการประมาณการ ไม่ใช่ค่าที่แม่นยำ 100%
+    <div class="grid cols-3" style="margin-bottom:4px">
+      <div class="card" style="padding:10px;height:200px;box-sizing:border-box"><div style="position:relative;width:100%;height:100%"><canvas id="chart_repeat"></canvas></div></div>
+      <div class="card" style="padding:10px;height:200px;box-sizing:border-box"><div style="position:relative;width:100%;height:100%"><canvas id="donut_repeat"></canvas></div></div>
+      <div class="card" style="padding:0;overflow:auto;height:200px;box-sizing:border-box">
+        <table style="font-size:12px;table-layout:fixed;width:100%">
+          <colgroup><col style="width:28%"><col style="width:18%"><col style="width:14%"><col style="width:40%"></colgroup>
+          <thead><tr><th>อาคาร/พื้นที่</th><th>ประเภทปัญหา</th><th style="text-align:right">จำนวน</th><th>สิ่งที่เสียซ้ำบ่อยสุด</th></tr></thead>
+          <tbody>
+            ${repeatList.map((r) => `<tr><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.building}</td><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.issueType}</td><td class="mono" style="text-align:right"><span class="badge rejected">${r.count}</span></td><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.symptom}</td></tr>`).join("")}
+            ${!repeatList.length ? '<tr><td colspan="4" class="empty">ไม่พบจุดที่เสียซ้ำ ≥3 ครั้ง ในตัวกรองนี้</td></tr>' : ""}
+          </tbody>
+        </table>
       </div>
     </div>
-  `;
-
-  renderBreakdownChartAndTable("status", statusBreakdown, "count", "#5B8DEF", 8);
-  // ทำให้แถวสถานะกดได้ (drill-down ไปตาราง Job List ด้านบน)
-  const statusTbody = document.getElementById("tbl_status");
-  if (statusTbody) {
-    Array.from(statusTbody.querySelectorAll("tr")).forEach((tr, idx) => {
-      const item = statusBreakdown[idx];
-      if (!item) return;
-      tr.style.cursor = "pointer";
-      tr.onclick = () => onOpsStatusRowClick(item.label);
-    });
+    <div style="padding:4px 4px 10px 4px;font-size:11px;color:var(--text-muted)">
+      ⚠️ คอลัมน์ "สิ่งที่เสียซ้ำ" เป็นการค้นคำสำคัญ (เช่น ก๊อกน้ำ, หลอดไฟ) จากข้อความแจ้งซ่อมในกลุ่มเดียวกัน เป็นการประมาณการ ไม่ใช่ค่าที่แม่นยำ 100%
+    </div>`);
   }
-  renderBreakdownChartAndTable("priority", priorityBreak, "count", "#E8A33D", 5);
-  renderBreakdownChartAndTable("issuetype", issueTypeBreak, "count", "#3FA796", 10);
-  renderBreakdownChartAndTable("tickettype", ticketTypeBreak, "count", "#B98CE0", 10);
-  renderBreakdownChartAndTable("building", buildingBreak, "count", "#4FC3E0", 10);
-  renderBreakdownChartAndTable("area", areaBreak, "count", "#E0A24F", 10);
-  renderBreakdownChartAndTable("costtype", costByIssueType, "value", "#D9685F", 10);
-  renderBreakdownChartAndTable("anbucket", anBreak, "count", "#7A8CFF", 6);
-  renderOpsJobList(rows);
+
+  body.innerHTML = parts.join("\n");
+
+  if (V("status")) {
+    renderBreakdownChartAndTable("status", statusBreakdown, "count", "#5B8DEF", 8);
+    const statusTbody = document.getElementById("tbl_status");
+    if (statusTbody) {
+      Array.from(statusTbody.querySelectorAll("tr")).forEach((tr, idx) => {
+        const item = statusBreakdown[idx];
+        if (!item) return;
+        tr.style.cursor = "pointer";
+        tr.onclick = () => onOpsStatusRowClick(item.label);
+      });
+    }
+  }
+  if (V("priority")) renderBreakdownChartAndTable("priority", priorityBreak, "count", "#E8A33D", 5);
+  if (V("issuetype")) renderBreakdownChartAndTable("issuetype", issueTypeBreak, "count", "#3FA796", 10);
+  if (V("tickettype")) renderBreakdownChartAndTable("tickettype", ticketTypeBreak, "count", "#B98CE0", 10);
+  if (V("building")) renderBreakdownChartAndTable("building", buildingBreak, "count", "#4FC3E0", 10);
+  if (V("area")) renderBreakdownChartAndTable("area", areaBreak, "count", "#E0A24F", 10);
+  if (V("costtype")) renderBreakdownChartAndTable("costtype", costByIssueType, "value", "#D9685F", 10);
+  if (V("anbucket")) renderBreakdownChartAndTable("anbucket", anBreak, "count", "#7A8CFF", 6);
+
+  if (V("techperf")) {
+    const techChartItems = techRows.map((t) => ({ label: t.name, count: t.count }));
+    renderBreakdownChartAndTable("techperf", techChartItems, "count", "#5B8DEF", 10);
+  }
+  if (V("repeat")) {
+    const repeatChartItems = repeatList.map((r) => ({ label: `${r.building} | ${r.issueType}`, count: r.count }));
+    renderBreakdownChartAndTable("repeat", repeatChartItems, "count", "#D9685F", 10);
+  }
+
+  if (V("joblist")) renderOpsJobList(rows);
 }
