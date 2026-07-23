@@ -364,6 +364,12 @@ async function runBrowserAnalysis(event) {
       : "วิเคราะห์ในเบราว์เซอร์ (Beta) — ไม่มีไฟล์งบ ข้าม Direct Match";
     data.budget_linked_uploadedAt = new Date().toISOString();
 
+    if (result.budget_overview && result.budget_overview.rows.length) {
+      data.budget_overview = result.budget_overview;
+      data.budget_overview_fileName = "สร้างอัตโนมัติจากไฟล์งบ (Beta)";
+      data.budget_overview_uploadedAt = new Date().toISOString();
+    }
+
     if (locationFile) {
       data.main_data = result.main_data;
       data.main_data_fileName = "สร้างอัตโนมัติจาก Fixtab Export + Location.xlsx (Beta)";

@@ -420,6 +420,59 @@ async function buildMainDataJS(fxRows, phaRows, locationRows, budgetFiles, onPro
   return enriched;
 }
 
+// ---------- ดึงข้อมูลงบประมาณ vs ยอดใช้จริง (จากชีต "PR–PO Status Overview" ในไฟล์งบ) ----------
+async function extractBudgetOverviewJS(budgetFiles, onProgress) {
+  const prog = (msg) => { if (onProgress) onProgress(msg); };
+  const results = [];
+  if (!budgetFiles || !budgetFiles.length) return results;
+
+  for (const file of budgetFiles) {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array", cellDates: true });
+    for (const sheetName of wb.SheetNames) {
+      if (!/status\s*overview/i.test(sheetName)) continue;
+      prog(`กำลังอ่านงบประมาณจากชีต "${sheetName}"...`);
+      const ws = wb.Sheets[sheetName];
+      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+      let headerRowIdx = null;
+      for (let i = 0; i < Math.min(6, raw.length); i++) {
+        const joined = (raw[i] || []).filter((c) => c != null).map((c) => String(c).toLowerCase()).join(" ");
+        if (joined.includes("account code") && joined.includes("account name")) headerRowIdx = i;
+      }
+      if (headerRowIdx === null) continue;
+      const header = (raw[headerRowIdx] || []).map((h) => (h == null ? "" : String(h).toLowerCase().replace(/\n/g, " ").trim()));
+      const codeCol = header.findIndex((h) => h.includes("account code"));
+      const nameCol = header.findIndex((h) => h.includes("account name"));
+      const budgetCol = header.findIndex((h) => h.includes("budget") && h.includes("year"));
+      const ytdCol = header.findIndex((h) => h.includes("ytd"));
+      const remainCol = header.findIndex((h) => h.includes("remaining"));
+      if (nameCol === -1 || budgetCol === -1) continue;
+
+      for (let r = headerRowIdx + 1; r < raw.length; r++) {
+        const row = raw[r];
+        if (!row) continue;
+        const name = row[nameCol];
+        if (!name || String(name).trim() === "") continue;
+        if (String(name).toLowerCase().includes("percentage")) continue;
+        const budget = Number(row[budgetCol]) || 0;
+        const ytd = ytdCol >= 0 ? Number(row[ytdCol]) || 0 : null;
+        const remaining = remainCol >= 0 ? Number(row[remainCol]) || 0 : budget - (ytd || 0);
+        if (budget === 0 && !ytd) continue;
+        results.push({
+          "Account Code": codeCol >= 0 ? row[codeCol] : null,
+          "Account Name": String(name).trim(),
+          "Budget (บาท)": budget,
+          "YTD Actual (บาท)": ytd,
+          "Remaining (บาท)": remaining,
+          "isTotal": String(name).trim().toLowerCase() === "total",
+          "sourceFile": file.name,
+        });
+      }
+    }
+  }
+  return results;
+}
+
 // ---------- Main pipeline ----------
 async function analyzeRawFiles(fixtabFile, phaFile, budgetFiles, locationFile, onProgress) {
   const prog = (msg) => { if (onProgress) onProgress(msg); };
@@ -571,9 +624,11 @@ async function analyzeRawFiles(fixtabFile, phaFile, budgetFiles, locationFile, o
     locationRows = anSheetRows(locWb, locSheetName);
   }
   const mainDataRows = await buildMainDataJS(fxRows, phaRows, locationRows, budgetFiles, prog);
+  const budgetOverviewRows = await extractBudgetOverviewJS(budgetFiles, prog);
 
   return {
     main_data: { rows: mainDataRows },
+    budget_overview: { rows: budgetOverviewRows },
     self_repair: {
       summary: summaryPct,
       allTicketsClassified,

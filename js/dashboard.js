@@ -364,6 +364,63 @@ function formatCell(v) {
   return String(v);
 }
 
+// รวมยอดตาม key ที่กำหนด แล้วเรียงมาก→น้อย (ใช้กับส่วนมูลค่า PR/PO)
+function dashGroupSum(rows, keyFn, valFn) {
+  const map = new Map();
+  rows.forEach((r) => {
+    const k = keyFn(r) || "(ไม่ระบุ)";
+    map.set(k, (map.get(k) || 0) + (valFn(r) || 0));
+  });
+  return Array.from(map.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+}
+
+function valueBreakdownCardHTML(id, title) {
+  return `
+    <div class="section-title" style="margin:14px 0 6px 0">${title}</div>
+    <div class="grid cols-2" style="margin-bottom:4px">
+      <div class="card" style="padding:10px;height:200px;box-sizing:border-box">
+        <div style="position:relative;width:100%;height:100%"><canvas id="pochart_${id}"></canvas></div>
+      </div>
+      <div class="card" style="padding:0;overflow:auto;height:200px;box-sizing:border-box">
+        <table style="font-size:12px;table-layout:fixed;width:100%">
+          <colgroup><col style="width:65%"><col style="width:35%"></colgroup>
+          <thead><tr><th>รายการ</th><th style="text-align:right">มูลค่า (บาท)</th></tr></thead>
+          <tbody id="potbl_${id}"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderValueBreakdown(id, items, color, maxItems) {
+  const top = items.slice(0, maxItems || 10);
+  const tbody = document.getElementById(`potbl_${id}`);
+  if (tbody) {
+    tbody.innerHTML = top.map((it) =>
+      `<tr><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.label}</td><td class="mono" style="text-align:right">${fmtNumber(it.value)}</td></tr>`
+    ).join("") || `<tr><td colspan="2" class="empty">ไม่มีข้อมูล</td></tr>`;
+  }
+  const ctx = document.getElementById(`pochart_${id}`);
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: top.map((it) => (it.label.length > 22 ? it.label.slice(0, 20) + "…" : it.label)),
+      datasets: [{ data: top.map((it) => it.value), backgroundColor: color }],
+    },
+    options: {
+      maintainAspectRatio: false,
+      responsive: true,
+      indexAxis: "y",
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: "#8A97A6", font: { size: 9 } }, grid: { color: "#2A3746" } },
+        y: { ticks: { color: "#8A97A6", font: { size: 9 } }, grid: { display: false } },
+      },
+    },
+  });
+}
+
 function renderOverviewTab(data) {
   const body = document.getElementById("dashboardBody");
   const filtering = filterYear !== "all" || filterMonth !== "all";
@@ -487,6 +544,72 @@ function renderOverviewTab(data) {
     </div>`);
   }
 
+  // ---- มูลค่า PR/PO: แยกมี Ticket / ไม่มี Ticket, ตามสถานะ, บริษัท, สาขา, อุปกรณ์ ----
+  const linkedFiltered = linkedRows.filter(rowPassesFilter);
+  const hasTicketTotal = linkedFiltered.reduce((a, r) => a + num(r["Total Repair Cost (THB)"]), 0);
+  const rmAllRows = (data.cost_2approaches && data.cost_2approaches.rawRMTransactions ? data.cost_2approaches.rawRMTransactions : []).filter(rowPassesFilter);
+  const totalRMPool = rmAllRows.reduce((a, r) => a + num(r["NETAMOUNT (Baht)"]), 0);
+  const noTicketTotal = Math.max(totalRMPool - hasTicketTotal, 0);
+
+  const byStatusValue = dashGroupSum(linkedFiltered, (r) => r["Status Ticket"], (r) => num(r["Total Repair Cost (THB)"]));
+  const byCompanyValue = dashGroupSum(linkedFiltered, (r) => r["Company Name"], (r) => num(r["Total Repair Cost (THB)"]));
+  const byBranchValue = dashGroupSum(linkedFiltered, (r) => r["Branch Name"], (r) => num(r["Total Repair Cost (THB)"]));
+  const byProductValue = dashGroupSum(linkedFiltered, (r) => r["Product Name"], (r) => num(r["Total Repair Cost (THB)"]));
+
+  if (V2("povalue")) {
+    overviewParts.push(`
+    <div class="section-title">มูลค่า PR/PO รวม — แยกที่มี Ticket อ้างอิง / ไม่มี Ticket อ้างอิง</div>
+    <div class="grid cols-3">
+      <div class="card kpi ok"><div class="label">มูลค่ารวม PR/PO ทั้งหมด (R&amp;M)</div><div class="value mono" style="font-size:18px">${fmtNumber(totalRMPool)}</div><div class="sub">บาท — จาก PHA_report ทั้งหมด</div></div>
+      <div class="card kpi ok"><div class="label">มี Ticket อ้างอิง (Direct Match)</div><div class="value mono" style="font-size:18px">${fmtNumber(hasTicketTotal)}</div><div class="sub">${fmtNumber(linkedFiltered.length)} Ticket</div></div>
+      <div class="card kpi warn"><div class="label">ไม่มี Ticket อ้างอิง</div><div class="value mono" style="font-size:18px">${fmtNumber(noTicketTotal)}</div><div class="sub">PR/PO ทั่วไป ไม่ผูกกับ Ticket ใดเลย</div></div>
+    </div>
+    <div style="padding:6px 4px;font-size:11px;color:var(--text-muted)">
+      ⚠️ "ไม่มี Ticket" เป็นตัวเลขประมาณการ (รวมทั้งหมด − ที่จับคู่ได้) เพราะ PR/PO ที่ไม่มีเลข Ticket อ้างอิง ไม่มีข้อมูลบริษัท/สาขา/อุปกรณ์ติดมาด้วย จึงแยกย่อยเพิ่มไม่ได้ในขณะนี้
+    </div>`);
+  }
+
+  if (V2("postatus")) overviewParts.push(valueBreakdownCardHTML("postatus", "1. มูลค่า PR/PO (ที่มี Ticket) แยกตามสถานะ Ticket"));
+  if (V2("pocompany")) overviewParts.push(valueBreakdownCardHTML("pocompany", "3. มูลค่า PR/PO (ที่มี Ticket) แยกตามบริษัท"));
+  if (V2("pobranch")) overviewParts.push(valueBreakdownCardHTML("pobranch", "4. มูลค่า PR/PO (ที่มี Ticket) แยกตามสาขา"));
+  if (V2("poproduct")) overviewParts.push(valueBreakdownCardHTML("poproduct", "5. มูลค่า PR/PO (ที่มี Ticket) แยกตามอุปกรณ์ (Product)"));
+
+  // ---- 7. งบประมาณ vs ยอดใช้จริง (จากไฟล์งบ ชีต "PR–PO Status Overview") ----
+  const budgetRows = data.budget_overview && data.budget_overview.rows ? data.budget_overview.rows : [];
+  const budgetTotalRow = budgetRows.find((r) => r.isTotal);
+  const budgetAccountRows = budgetRows.filter((r) => !r.isTotal).sort((a, b) => b["Budget (บาท)"] - a["Budget (บาท)"]);
+
+  if (V2("budgetoverview")) {
+    if (!budgetRows.length) {
+      overviewParts.push(`
+      <div class="section-title">7. งบประมาณ vs ยอดใช้จริง (Budget Utilization)</div>
+      <div class="card empty">ยังไม่มีข้อมูลงบประมาณ — ไปที่ <a href="import.html">นำเข้าข้อมูล</a> แล้วใส่ไฟล์งบ (เช่น "6. Overview PR-PO Tracking") ที่มีชีต "PR–PO Status Overview" ในขั้นตอนที่ 2</div>`);
+    } else {
+      const usedPct = budgetTotalRow && budgetTotalRow["Budget (บาท)"] ? (budgetTotalRow["YTD Actual (บาท)"] / budgetTotalRow["Budget (บาท)"] * 100) : 0;
+      overviewParts.push(`
+      <div class="section-title">7. งบประมาณ vs ยอดใช้จริง (Budget Utilization) — เป็นข้อมูล ณ วันที่ในไฟล์งบ ไม่ผูกกับตัวกรองปี/เดือนด้านบน</div>
+      <div class="grid cols-4">
+        <div class="card kpi ok"><div class="label">งบประมาณทั้งหมด</div><div class="value mono" style="font-size:17px">${fmtNumber(budgetTotalRow ? budgetTotalRow["Budget (บาท)"] : 0)}</div><div class="sub">บาท</div></div>
+        <div class="card kpi ${usedPct > 90 ? "warn" : "ok"}"><div class="label">ใช้ไปแล้ว (YTD)</div><div class="value mono" style="font-size:17px">${fmtNumber(budgetTotalRow ? budgetTotalRow["YTD Actual (บาท)"] : 0)}</div><div class="sub">${usedPct.toFixed(1)}% ของงบทั้งหมด</div></div>
+        <div class="card kpi"><div class="label">คงเหลือ</div><div class="value mono" style="font-size:17px">${fmtNumber(budgetTotalRow ? budgetTotalRow["Remaining (บาท)"] : 0)}</div><div class="sub">บาท</div></div>
+        <div class="card kpi ${usedPct > 90 ? "warn" : "ok"}"><div class="label">ประสิทธิภาพการใช้งบ</div><div class="value mono" style="font-size:17px">${usedPct.toFixed(1)}%</div><div class="sub">${usedPct > 100 ? "⚠️ เกินงบแล้ว" : usedPct > 90 ? "ใกล้เต็มงบ" : "ยังอยู่ในงบ"}</div></div>
+      </div>
+      <div class="card" style="padding:0;overflow:auto;max-height:340px;margin-top:10px">
+        <table style="font-size:12px;table-layout:fixed;width:100%">
+          <colgroup><col style="width:12%"><col style="width:30%"><col style="width:18%"><col style="width:18%"><col style="width:14%"><col style="width:8%"></colgroup>
+          <thead><tr><th>รหัสบัญชี</th><th>ชื่อบัญชี</th><th style="text-align:right">งบประมาณ</th><th style="text-align:right">ใช้ไป (YTD)</th><th style="text-align:right">คงเหลือ</th><th style="text-align:right">%</th></tr></thead>
+          <tbody>
+            ${budgetAccountRows.map((r) => {
+              const pct = r["Budget (บาท)"] ? (r["YTD Actual (บาท)"] / r["Budget (บาท)"] * 100) : 0;
+              const overBudget = r["Remaining (บาท)"] < 0;
+              return `<tr><td class="mono">${r["Account Code"] || "-"}</td><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r["Account Name"]}</td><td class="mono" style="text-align:right">${fmtNumber(r["Budget (บาท)"])}</td><td class="mono" style="text-align:right">${fmtNumber(r["YTD Actual (บาท)"])}</td><td class="mono" style="text-align:right;${overBudget ? "color:var(--danger)" : ""}">${fmtNumber(r["Remaining (บาท)"])}</td><td class="mono" style="text-align:right"><span class="badge ${pct > 100 ? "rejected" : pct > 90 ? "pending" : "approved"}">${pct.toFixed(0)}%</span></td></tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>`);
+    }
+  }
+
   if (V2("classification")) {
     overviewParts.push(`
     <div class="section-title">การจำแนกลักษณะ Ticket ที่ซ่อมเสร็จ${filtering && rawTickets.length ? " (ตามช่วงเวลาที่กรอง)" : ""}</div>
@@ -520,6 +643,11 @@ function renderOverviewTab(data) {
   }
 
   body.innerHTML = overviewParts.join("\n");
+
+  if (V2("postatus")) renderValueBreakdown("postatus", byStatusValue, "#5B8DEF", 8);
+  if (V2("pocompany")) renderValueBreakdown("pocompany", byCompanyValue, "#E8A33D", 10);
+  if (V2("pobranch")) renderValueBreakdown("pobranch", byBranchValue, "#3FA796", 10);
+  if (V2("poproduct")) renderValueBreakdown("poproduct", byProductValue, "#D9685F", 10);
 
   if (V2("classification")) renderClassification(data, filteredTickets);
 

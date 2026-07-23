@@ -156,6 +156,12 @@ const PAGE_SECTIONS = {
     sections: [
       { id: "kpi", label: "KPI หลัก 4 ช่อง" },
       { id: "summary4", label: "สรุปค่าใช้จ่ายจากไฟล์ทั้ง 4" },
+      { id: "povalue", label: "มูลค่า PR/PO รวม (มี Ticket / ไม่มี Ticket)" },
+      { id: "budgetoverview", label: "งบประมาณ vs ยอดใช้จริง (Budget Utilization)" },
+      { id: "postatus", label: "มูลค่า PR/PO แยกตามสถานะ Ticket" },
+      { id: "pocompany", label: "มูลค่า PR/PO แยกตามบริษัท" },
+      { id: "pobranch", label: "มูลค่า PR/PO แยกตามสาขา" },
+      { id: "poproduct", label: "มูลค่า PR/PO แยกตามอุปกรณ์ (Product)" },
       { id: "classification", label: "การจำแนกลักษณะ Ticket ที่ซ่อมเสร็จ" },
       { id: "categorychart", label: "ค่าซ่อมต่อครั้ง แยกตามหมวดอุปกรณ์" },
       { id: "threshold", label: "เกณฑ์ CAPEX vs OPEX รายหมวดอุปกรณ์" },
