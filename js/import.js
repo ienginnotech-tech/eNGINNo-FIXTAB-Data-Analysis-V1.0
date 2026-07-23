@@ -290,7 +290,7 @@ function clearInputStatus() {
 async function clearOutputData() {
   if (!confirm("ล้างข้อมูลวิเคราะห์ทั้งหมด (Output) ที่ใช้แสดงผลใน CAPEX/OPEX Analysis?\nต้องอัปโหลดไฟล์วิเคราะห์ 4 ไฟล์ใหม่หลังล้าง — ไฟล์จริงในเครื่องคุณไม่หายไปไหน")) return;
   await clearStoredData();
-  ANALYSIS_FILES.forEach((f) => {
+  [...ANALYSIS_FILES, ...OPERATIONS_FILES].forEach((f) => {
     setDot(f.key, "pending");
     const row = document.getElementById(`row_${f.key}`);
     const tag = row && row.querySelector(".uploaded-tag");
@@ -411,7 +411,7 @@ async function runBrowserAnalysis(event) {
 async function clearAllData() {
   if (!confirm("ล้างข้อมูลทั้งหมด (ทั้ง Input และ Output)? การกระทำนี้ยกเลิกไม่ได้")) return;
   await clearStoredData();
-  [...RAW_FILES, ...ANALYSIS_FILES].forEach((f) => {
+  [...RAW_FILES, ...ANALYSIS_FILES, ...OPERATIONS_FILES].forEach((f) => {
     setDot(f.key, "pending");
     const row = document.getElementById(`row_${f.key}`);
     const tag = row && row.querySelector(".uploaded-tag");
