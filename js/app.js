@@ -4,7 +4,7 @@
 
 const NAV_ITEMS = [
   { href: "operations.html", label: "Work Request", icon: "🛠️" },
-  { href: "dashboard.html", label: "Data Analysis", icon: "📊" },
+  { href: "dashboard.html", label: "CAPEX/OPEX Analysis", icon: "📊" },
   { href: "import.html", label: "นำเข้าข้อมูล", icon: "📥" },
   { href: "admin.html", label: "Admin Management", icon: "🛡️", adminOnly: true },
   { href: "settings.html", label: "ตั้งค่า", icon: "⚙️" },
@@ -87,6 +87,24 @@ function applyTheme() {
 
 // apply theme immediately on every page load (before shell renders too)
 applyTheme();
+
+// ---------- SLA Target (Maintainability) — ใช้ร่วมกันระหว่างหน้า Work Request และ ตั้งค่า ----------
+const SLA_KEY = "fixtab_sla_settings";
+const DEFAULT_SLA_SETTINGS = { High: 4, Medium: 24, Low: 72, Default: 24 };
+
+function getSlaSettings() {
+  const raw = localStorage.getItem(SLA_KEY);
+  if (!raw) return { ...DEFAULT_SLA_SETTINGS };
+  try { return { ...DEFAULT_SLA_SETTINGS, ...JSON.parse(raw) }; } catch { return { ...DEFAULT_SLA_SETTINGS }; }
+}
+
+function saveSlaSettings(settings) {
+  localStorage.setItem(SLA_KEY, JSON.stringify(settings));
+}
+
+function resetSlaSettings() {
+  localStorage.removeItem(SLA_KEY);
+}
 
 function fmtNumber(n) {
   if (n === null || n === undefined || isNaN(n)) return "-";

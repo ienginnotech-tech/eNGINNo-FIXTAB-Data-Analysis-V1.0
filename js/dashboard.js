@@ -152,7 +152,7 @@ async function buildDashboard(activeTab) {
   if (!anyData) {
     main.innerHTML = `
       <div class="topbar">
-        <div><div class="eyebrow">Dashboard</div><h2>ภาพรวม CAPEX / OPEX</h2></div>
+        <div><div class="eyebrow">CAPEX/OPEX Analysis</div><h2>ภาพรวม CAPEX / OPEX</h2></div>
       </div>
       <div class="card empty">
         ยังไม่มีข้อมูล — กรุณาไปที่หน้า <a href="import.html">นำเข้าข้อมูล</a> เพื่ออัปโหลดไฟล์ผลวิเคราะห์ทั้ง 4 ไฟล์ก่อน
@@ -410,7 +410,7 @@ function renderOverviewTab(data) {
   body.innerHTML = `
     <div class="topbar">
       <div>
-        <div class="eyebrow">Dashboard</div>
+        <div class="eyebrow">CAPEX/OPEX Analysis</div>
         <h2>ภาพรวม CAPEX / OPEX ${filtering ? `<span class="badge pending" style="vertical-align:middle;margin-left:8px">กรองอยู่: ${filterYear !== "all" ? "ปี " + filterYear : "ทุกปี"} / ${filterMonth !== "all" ? THAI_MONTHS[filterMonth - 1] : "ทุกเดือน"}</span>` : ""}</h2>
       </div>
       <div>
@@ -421,9 +421,9 @@ function renderOverviewTab(data) {
 
     <div class="grid cols-4">
       <div class="card kpi">
-        <div class="label">Ticket ที่วิเคราะห์แล้ว</div>
+        <div class="label">Ticket ที่ปิดงานแล้ว (วิเคราะห์ลักษณะการซ่อม)</div>
         <div class="value">${totalTickets}</div>
-        <div class="sub">${rawTickets.length ? "กรองตามช่วงเวลาที่เลือก" : "จากไฟล์ SelfRepair_vs_Procured"}</div>
+        <div class="sub">${rawTickets.length ? "เฉพาะ Done + Closed — กรองตามช่วงเวลาที่เลือก" : "เฉพาะ Done + Closed — จากไฟล์ SelfRepair_vs_Procured"}</div>
       </div>
       <div class="card kpi warn">
         <div class="label">ซ่อมเองโดยช่างอาคาร</div>

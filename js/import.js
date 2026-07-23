@@ -288,7 +288,7 @@ function clearInputStatus() {
 // ล้างข้อมูลวิเคราะห์ (Output) — ลบข้อมูลที่ parse ไว้ทั้งหมดออกจาก IndexedDB
 // มีผลกับหน้า Dashboard โดยตรง (ต้องอัปโหลดไฟล์วิเคราะห์ 4 ไฟล์ใหม่หลังล้าง)
 async function clearOutputData() {
-  if (!confirm("ล้างข้อมูลวิเคราะห์ทั้งหมด (Output) ที่ใช้แสดงผลใน Dashboard?\nต้องอัปโหลดไฟล์วิเคราะห์ 4 ไฟล์ใหม่หลังล้าง — ไฟล์จริงในเครื่องคุณไม่หายไปไหน")) return;
+  if (!confirm("ล้างข้อมูลวิเคราะห์ทั้งหมด (Output) ที่ใช้แสดงผลใน CAPEX/OPEX Analysis?\nต้องอัปโหลดไฟล์วิเคราะห์ 4 ไฟล์ใหม่หลังล้าง — ไฟล์จริงในเครื่องคุณไม่หายไปไหน")) return;
   await clearStoredData();
   ANALYSIS_FILES.forEach((f) => {
     setDot(f.key, "pending");
@@ -299,8 +299,8 @@ async function clearOutputData() {
     if (input) input.value = "";
   });
   const session = getSession();
-  logUploadToBackend("-", "clear_output", 0, `ล้างข้อมูล Output/Dashboard โดย ${session ? session.username : "unknown"}`);
-  alert("ล้างข้อมูลวิเคราะห์เรียบร้อย — Dashboard จะว่างจนกว่าจะอัปโหลดไฟล์ใหม่");
+  logUploadToBackend("-", "clear_output", 0, `ล้างข้อมูล Output/CAPEX-OPEX Analysis โดย ${session ? session.username : "unknown"}`);
+  alert("ล้างข้อมูลวิเคราะห์เรียบร้อย — CAPEX/OPEX Analysis จะว่างจนกว่าจะอัปโหลดไฟล์ใหม่");
 }
 
 // ---------- ซ่อน/แสดง ขั้นตอนที่ 1 (บันทึกประวัติไฟล์ต้นฉบับ) ----------
@@ -387,7 +387,7 @@ async function runBrowserAnalysis(event) {
     const wrNote = locationFile
       ? ` — สร้างข้อมูล Work Request ให้แล้ว (ไปที่หน้า Work Request ได้เลย)`
       : ` — ไม่ได้ใส่ Location.xlsx จึงยังไม่มีข้อมูล Work Request`;
-    progressBox.innerHTML = `✅ วิเคราะห์สำเร็จ! Ticket ที่จัดหมวดได้ ${result.cost_2approaches.rawTicketsByCategory.length.toLocaleString()} รายการ${directNote}${wrNote} — <a href="dashboard.html">ไปที่ Data Analysis →</a> | <a href="operations.html">ไปที่ Work Request →</a>`;
+    progressBox.innerHTML = `✅ วิเคราะห์สำเร็จ! Ticket ที่จัดหมวดได้ ${result.cost_2approaches.rawTicketsByCategory.length.toLocaleString()} รายการ${directNote}${wrNote} — <a href="dashboard.html">ไปที่ CAPEX/OPEX Analysis →</a> | <a href="operations.html">ไปที่ Work Request →</a>`;
 
     const session = getSession();
     const allFileNames = [fixtabInput.files[0].name, phaInput.files[0].name, ...budgetFiles.map((f) => f.name), locationFile ? locationFile.name : null].filter(Boolean).join(" + ");
