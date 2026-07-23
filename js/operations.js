@@ -407,15 +407,23 @@ function renderOperationsBody(rows) {
     </div>`);
   }
 
+  const STATUS_COLORS = {
+    "Done": "#5B8DEF", "Closed": "#3FA796", "In progress": "#E8A33D",
+    "Pending": "#F2D024", "Rejected": "#D9685F",
+  };
+
   if (V("statuspct")) {
     parts.push(`
     <div class="grid" style="grid-template-columns:repeat(${Math.max(statusPct.length, 1)}, 1fr);gap:10px;margin-top:10px">
-      ${statusPct.map((s) => `
-        <div class="card" style="padding:10px;text-align:center">
+      ${statusPct.map((s) => {
+        const c = STATUS_COLORS[s.label] || "#8A97A6";
+        return `
+        <div class="card" style="padding:10px;text-align:center;border-left:3px solid ${c}">
           <div class="label" style="font-size:11px">${s.label}</div>
-          <div class="value mono" style="font-size:18px">${s.pct.toFixed(1)}%</div>
+          <div class="value mono" style="font-size:18px;color:${c}">${s.pct.toFixed(1)}%</div>
           <div class="sub">${fmtNumber(s.count)} Ticket</div>
-        </div>`).join("")}
+        </div>`;
+      }).join("")}
     </div>`);
   }
 
