@@ -86,10 +86,15 @@ function sortTableRows(rows) {
 
 function collectYears(data) {
   const years = new Set();
+  // สแกนเฉพาะตารางระดับ "Ticket" (มี Report Date) ไม่รวมตาราง PR/PO ดิบ (rawRMTransactions,
+  // rawOneoffCosts, pmContractsExcluded) เพราะข้อมูลธุรกรรมจัดซื้อย้อนหลังไปไกลกว่าข้อมูล Ticket จริง
+  // (เช่น PHA_report มีธุรกรรมตั้งแต่ปี 2021 ทั้งที่ Ticket มีแค่ปี 2024 เป็นต้นไป)
+  const TICKET_LEVEL_KEYS = ["rawTicketsByCategory", "allTicketsClassified", "linkedTickets"];
   ANALYSIS_FILES.forEach((f) => {
     const fd = data[f.key];
     if (!fd) return;
-    Object.values(fd).forEach((rows) => {
+    TICKET_LEVEL_KEYS.forEach((k) => {
+      const rows = fd[k];
       if (!Array.isArray(rows)) return;
       rows.forEach((r) => {
         const d = extractDate(r);
