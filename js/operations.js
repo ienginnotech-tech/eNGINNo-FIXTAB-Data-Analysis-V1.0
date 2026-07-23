@@ -23,8 +23,7 @@ const COL = {
   area: "แยกข้อมูล Issue detail(O)เป็นพื้นที่ เทียบกับข้อมูลในLocation(Area)",
 };
 
-const SLA_TARGET_HOURS = { High: 4, Medium: 24, Low: 72 };
-const DEFAULT_SLA = 24;
+// SLA เป้าหมาย (ชั่วโมง) ต่อ Priority — ตอนนี้แก้ได้ที่หน้า "ตั้งค่า" แล้ว (อ่านผ่าน getSlaSettings() ใน app.js)
 
 const SYMPTOM_KEYWORDS = [
   "ก๊อกน้ำ", "สายชำระ", "โถส้วม", "โถปัสสาวะ", "ฝักบัว", "ท่อน้ำ", "ท่อระบาย", "ท่อตัน",
@@ -292,11 +291,12 @@ function renderOperationsBody(rows) {
   const respVals = rows.map((r) => onum(r[COL.response])).filter((v) => v !== null);
   const avgResp = respVals.length ? respVals.reduce((a, b) => a + b, 0) / respVals.length : null;
 
+  const slaSettings = getSlaSettings();
   const rowsWithMttr = rows.filter((r) => onum(r[COL.mttr]) !== null);
   let maintainability = null;
   if (rowsWithMttr.length) {
     const mVals = rowsWithMttr.map((r) => {
-      const target = SLA_TARGET_HOURS[r[COL.priority]] || DEFAULT_SLA;
+      const target = slaSettings[r[COL.priority]] || slaSettings.Default;
       const mttr = onum(r[COL.mttr]);
       return 1 - Math.exp(-target / mttr);
     });
