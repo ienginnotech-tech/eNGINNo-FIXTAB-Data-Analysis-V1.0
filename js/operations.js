@@ -427,6 +427,17 @@ function renderOperationsBody(rows) {
     </div>`);
   }
 
+  if (V("costsummary")) {
+    parts.push(`
+    <div class="section-title">ค่าใช้จ่ายรวม แยกตามหมวดต้นทุน</div>
+    <div class="grid cols-4">
+      <div class="card kpi" style="padding:10px"><div class="label">รวมทั้งหมด</div><div class="value mono" style="font-size:17px">${fmtNumber(costTotal)}</div></div>
+      <div class="card" style="padding:10px"><div class="label">ค่าแรงช่างอาคาร</div><div class="value mono" style="font-size:15px">${fmtNumber(costAH)}</div></div>
+      <div class="card" style="padding:10px"><div class="label">ค่าแรง+ค่าซ่อมผู้รับเหมา</div><div class="value mono" style="font-size:15px">${fmtNumber(costAI + costAK)}</div></div>
+      <div class="card" style="padding:10px"><div class="label">ค่าอะไหล่+ค่าบริหาร</div><div class="value mono" style="font-size:15px">${fmtNumber(costAJ + costAL)}</div></div>
+    </div>`);
+  }
+
   if (V("joblist")) {
     parts.push(`
     <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
@@ -447,17 +458,6 @@ function renderOperationsBody(rows) {
   if (V("area")) parts.push(breakdownCardHTML("area", "พื้นที่ (จับคู่ Area)", "จำนวน"));
   if (V("costtype")) parts.push(breakdownCardHTML("costtype", "ค่าใช้จ่ายรวม แยกตามประเภทปัญหา", "บาท"));
   if (V("anbucket")) parts.push(breakdownCardHTML("anbucket", "การกระจายจำนวนครั้งที่เสียซ้ำ (AN)", "จำนวน Ticket"));
-
-  if (V("costsummary")) {
-    parts.push(`
-    <div class="section-title">ค่าใช้จ่ายรวม แยกตามหมวดต้นทุน</div>
-    <div class="grid cols-4">
-      <div class="card kpi" style="padding:10px"><div class="label">รวมทั้งหมด</div><div class="value mono" style="font-size:17px">${fmtNumber(costTotal)}</div></div>
-      <div class="card" style="padding:10px"><div class="label">ค่าแรงช่างอาคาร</div><div class="value mono" style="font-size:15px">${fmtNumber(costAH)}</div></div>
-      <div class="card" style="padding:10px"><div class="label">ค่าแรง+ค่าซ่อมผู้รับเหมา</div><div class="value mono" style="font-size:15px">${fmtNumber(costAI + costAK)}</div></div>
-      <div class="card" style="padding:10px"><div class="label">ค่าอะไหล่+ค่าบริหาร</div><div class="value mono" style="font-size:15px">${fmtNumber(costAJ + costAL)}</div></div>
-    </div>`);
-  }
 
   if (V("techperf")) {
     parts.push(`
