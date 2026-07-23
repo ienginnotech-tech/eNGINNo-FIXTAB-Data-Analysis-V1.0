@@ -26,6 +26,7 @@
 
   function renderSettings() {
     const t = getTheme();
+    const sla = getSlaSettings();
     const main = document.getElementById("mainContent");
     main.innerHTML = `
       <div class="topbar">
@@ -33,8 +34,25 @@
       </div>
 
       <div class="card">
-        <h3>ชุดสีสำเร็จรูป</h3>
-        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px" id="presetRow"></div>
+        <h3>เกณฑ์ SLA สำหรับคำนวณ Maintainability (หน้า Work Request)</h3>
+        <p style="color:var(--text-muted);font-size:13px;margin-top:-6px">
+          ใช้ในสูตร M = 1 − e^(−Target/MTTR) — กำหนดเวลาเป้าหมาย (ชั่วโมง) ตามระดับความสำคัญของงาน
+        </p>
+        <div class="grid cols-4" style="margin-top:12px">
+          <div class="field"><label>High (เร่งด่วน)</label><input type="text" id="slaHigh" value="${sla.High}"></div>
+          <div class="field"><label>Medium (ปานกลาง)</label><input type="text" id="slaMedium" value="${sla.Medium}"></div>
+          <div class="field"><label>Low (ไม่เร่งด่วน)</label><input type="text" id="slaLow" value="${sla.Low}"></div>
+          <div class="field"><label>Default (ไม่ระบุ Priority)</label><input type="text" id="slaDefault" value="${sla.Default}"></div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:6px">
+          <button class="btn" onclick="applySlaForm()">บันทึกเกณฑ์ SLA</button>
+          <button class="btn secondary" onclick="resetSlaSettings(); renderSettings();">คืนค่าเริ่มต้น (4 / 24 / 72)</button>
+        </div>
+      </div>
+
+      <div class="section-title">ชุดสีสำเร็จรูป</div>
+      <div class="card">
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px" id="presetRow"></div>
       </div>
 
       <div class="section-title">ปรับสีเอง</div>
@@ -71,6 +89,21 @@
       btn.onclick = () => { saveTheme({ ...getTheme(), ...p }); renderSettings(); };
       presetRow.appendChild(btn);
     });
+  }
+
+  function applySlaForm() {
+    const parseNum = (id, fallback) => {
+      const v = parseFloat(document.getElementById(id).value);
+      return isNaN(v) || v <= 0 ? fallback : v;
+    };
+    const current = getSlaSettings();
+    saveSlaSettings({
+      High: parseNum("slaHigh", current.High),
+      Medium: parseNum("slaMedium", current.Medium),
+      Low: parseNum("slaLow", current.Low),
+      Default: parseNum("slaDefault", current.Default),
+    });
+    renderSettings();
   }
 
   function applySettingsForm() {
