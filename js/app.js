@@ -137,6 +137,7 @@ const PAGE_SECTIONS = {
     sections: [
       { id: "kpi", label: "KPI หลัก (WR ทั้งหมด / MTTR / Maintainability / Priority สูง)" },
       { id: "statuspct", label: "สัดส่วนสถานะงาน (แถบเปอร์เซ็นต์)" },
+      { id: "workvolume", label: "กราฟแสดงข้อมูลปริมาณงานและค่าเฉลี่ยของงาน" },
       { id: "joblist", label: "ตารางรายละเอียดงาน" },
       { id: "status", label: "สถานะงาน (Status Ticket)" },
       { id: "priority", label: "ระดับความสำคัญ (Priority)" },

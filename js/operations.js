@@ -427,6 +427,63 @@ function renderOperationsBody(rows) {
     </div>`);
   }
 
+  // ---- ปริมาณงาน + ค่าเฉลี่ยของงาน (เฉพาะ Done + Closed) ----
+  const doneClosedRows = rows.filter((r) => r[COL.status] === "Done" || r[COL.status] === "Closed");
+  const doneClosedDates = doneClosedRows.map((r) => opsParseDate(r[COL.reportDate])).filter(Boolean);
+  let volumePerDay = null, volumePerMonth = null, volumePerYear = null;
+  let hoursPerDay = null, hoursPerMonth = null, hoursPerYear = null;
+  let dateRangeLabel = "-";
+  let monthlyTrend = [];
+
+  if (doneClosedDates.length) {
+    const minDate = new Date(Math.min(...doneClosedDates.map((d) => d.getTime())));
+    const maxDate = new Date(Math.max(...doneClosedDates.map((d) => d.getTime())));
+    const daySpan = Math.max(Math.round((maxDate - minDate) / 86400000) + 1, 1);
+    const monthSpan = Math.max(daySpan / 30.44, 1 / 30.44);
+    const yearSpan = Math.max(daySpan / 365.25, 1 / 365.25);
+
+    volumePerDay = doneClosedRows.length / daySpan;
+    volumePerMonth = doneClosedRows.length / monthSpan;
+    volumePerYear = doneClosedRows.length / yearSpan;
+
+    const totalHours = doneClosedRows.reduce((a, r) => a + (onum(r[COL.mttr]) || 0), 0);
+    hoursPerDay = totalHours / daySpan;
+    hoursPerMonth = totalHours / monthSpan;
+    hoursPerYear = totalHours / yearSpan;
+
+    dateRangeLabel = `${minDate.toLocaleDateString("th-TH")} — ${maxDate.toLocaleDateString("th-TH")} (${fmtNumber(daySpan)} วัน)`;
+
+    // แนวโน้มรายเดือน (จำนวนงาน) สำหรับกราฟ
+    const monthMap = new Map();
+    doneClosedRows.forEach((r) => {
+      const d = opsParseDate(r[COL.reportDate]);
+      if (!d) return;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      monthMap.set(key, (monthMap.get(key) || 0) + 1);
+    });
+    monthlyTrend = Array.from(monthMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }
+
+  if (V("workvolume")) {
+    parts.push(`
+    <div class="section-title">กราฟแสดงข้อมูลปริมาณงานและค่าเฉลี่ยของงาน (เฉพาะ Done + Closed)</div>
+    <div class="card" style="padding:10px;height:180px;box-sizing:border-box">
+      <div style="position:relative;width:100%;height:100%"><canvas id="chart_workvolume"></canvas></div>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin:4px 0 10px 0">ช่วงข้อมูล: ${dateRangeLabel}</div>
+    <div class="grid cols-3">
+      <div class="card kpi ok" style="padding:10px"><div class="label">ปริมาณงานเฉลี่ย / วัน</div><div class="value mono" style="font-size:17px">${volumePerDay !== null ? volumePerDay.toFixed(2) : "-"}</div><div class="sub">Ticket/วัน</div></div>
+      <div class="card kpi ok" style="padding:10px"><div class="label">ปริมาณงานเฉลี่ย / เดือน</div><div class="value mono" style="font-size:17px">${volumePerMonth !== null ? volumePerMonth.toFixed(1) : "-"}</div><div class="sub">Ticket/เดือน</div></div>
+      <div class="card kpi ok" style="padding:10px"><div class="label">ปริมาณงานเฉลี่ย / ปี</div><div class="value mono" style="font-size:17px">${volumePerYear !== null ? fmtNumber(Math.round(volumePerYear)) : "-"}</div><div class="sub">Ticket/ปี</div></div>
+      <div class="card kpi warn" style="padding:10px"><div class="label">ชั่วโมงซ่อมรวมเฉลี่ย / วัน</div><div class="value mono" style="font-size:17px">${hoursPerDay !== null ? hoursPerDay.toFixed(1) : "-"}</div><div class="sub">ชม./วัน</div></div>
+      <div class="card kpi warn" style="padding:10px"><div class="label">ชั่วโมงซ่อมรวมเฉลี่ย / เดือน</div><div class="value mono" style="font-size:17px">${hoursPerMonth !== null ? fmtNumber(Math.round(hoursPerMonth)) : "-"}</div><div class="sub">ชม./เดือน</div></div>
+      <div class="card kpi warn" style="padding:10px"><div class="label">ชั่วโมงซ่อมรวมเฉลี่ย / ปี</div><div class="value mono" style="font-size:17px">${hoursPerYear !== null ? fmtNumber(Math.round(hoursPerYear)) : "-"}</div><div class="sub">ชม./ปี</div></div>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:6px">
+      * "ชั่วโมงซ่อมรวมเฉลี่ย" คือผลรวมชั่วโมง MTTR ของทุก Ticket หารด้วยจำนวนวัน/เดือน/ปีในช่วงข้อมูล (ปริมาณงานซ่อมที่ทีมต้องรับผิดชอบโดยเฉลี่ยต่อช่วงเวลา) ส่วน MTTR เฉลี่ยต่องาน (ชั่วโมง/1 Ticket) ดูได้ที่การ์ด "MTTR เฉลี่ย" ด้านบนสุด
+    </div>`);
+  }
+
   if (V("costsummary")) {
     parts.push(`
     <div class="section-title">ค่าใช้จ่ายรวม แยกตามหมวดต้นทุน</div>
@@ -501,6 +558,28 @@ function renderOperationsBody(rows) {
   }
 
   body.innerHTML = parts.join("\n");
+
+  if (V("workvolume") && monthlyTrend.length) {
+    const ctx = document.getElementById("chart_workvolume");
+    if (ctx) {
+      new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: monthlyTrend.map(([k]) => k),
+          datasets: [{ label: "จำนวน Ticket (Done+Closed)", data: monthlyTrend.map(([, v]) => v), backgroundColor: "#3FA796" }],
+        },
+        options: {
+          maintainAspectRatio: false,
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: "#8A97A6", font: { size: 9 } }, grid: { display: false } },
+            y: { ticks: { color: "#8A97A6", font: { size: 9 } }, grid: { color: "#2A3746" } },
+          },
+        },
+      });
+    }
+  }
 
   if (V("status")) {
     renderBreakdownChartAndTable("status", statusBreakdown, "count", "#5B8DEF", 8);
