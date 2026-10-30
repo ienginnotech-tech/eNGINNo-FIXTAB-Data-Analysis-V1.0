@@ -19,6 +19,7 @@
 <script src="js/analyze.js"></script>
 <script src="js/import.js"></script>
 <script>
+  if (!requireUploader()) throw new Error("no permission");
   renderShell("import.html");
   document.getElementById("mainContent").innerHTML = `
     <div class="topbar">

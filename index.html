@@ -19,52 +19,72 @@
         <button id="tabRegister" onclick="switchTab('register')">สมัครสมาชิก</button>
       </div>
 
-      <form id="loginForm" onsubmit="handleLogin(event)">
+      <form id="loginForm" onsubmit="handleRequestOtp(event)">
         <div class="field">
-          <label>ชื่อผู้ใช้</label>
-          <input type="text" id="loginUsername" required autocomplete="username" />
+          <label>KEY ของระบบ (ขอจากผู้ดูแลระบบ)</label>
+          <input type="password" id="loginKey" required autocomplete="off" />
         </div>
         <div class="field">
-          <label>รหัสผ่าน</label>
-          <input type="password" id="loginPassword" required autocomplete="current-password" />
+          <label>อีเมล</label>
+          <input type="email" id="loginEmail" required autocomplete="email" />
         </div>
-        <button type="submit" class="btn" style="width:100%">เข้าสู่ระบบ</button>
+        <button type="submit" class="btn" style="width:100%">ขอรหัส OTP ทางอีเมล</button>
+      </form>
+
+      <form id="otpForm" onsubmit="handleVerifyOtp(event)" style="display:none">
+        <div class="field">
+          <label>รหัส 6 หลักที่ส่งไปที่ <span id="otpEmailLabel" class="mono"></span></label>
+          <input type="text" id="otpCode" required inputmode="numeric" maxlength="6" autocomplete="one-time-code" style="letter-spacing:6px;font-size:20px;text-align:center" />
+        </div>
+        <button type="submit" class="btn" style="width:100%">ยืนยันและเข้าสู่ระบบ</button>
+        <button type="button" class="btn secondary" style="width:100%;margin-top:8px" onclick="backToEmail()">← ใช้อีเมลอื่น / ขอรหัสใหม่</button>
       </form>
 
       <form id="registerForm" onsubmit="handleRegister(event)" style="display:none">
         <div class="field">
-          <label>ชื่อผู้ใช้ที่ต้องการ</label>
-          <input type="text" id="regUsername" required />
+          <label>KEY ของระบบ</label>
+          <input type="password" id="regKey" required autocomplete="off" />
         </div>
         <div class="field">
-          <label>ตั้งรหัสผ่าน</label>
-          <input type="password" id="regPassword" required />
+          <label>อีเมล (ที่จะใช้รับรหัส OTP)</label>
+          <input type="email" id="regEmail" required />
         </div>
-        <button type="submit" class="btn" style="width:100%">ส่งคำขอสมัครสมาชิก</button>
+        <div class="field">
+          <label>ชื่อ-นามสกุล</label>
+          <input type="text" id="regName" required />
+        </div>
+        <button type="submit" class="btn" style="width:100%">ส่งคำขออนุมัติเข้าใช้งาน</button>
       </form>
 
       <div id="msgBox"></div>
 
       <div class="divider"></div>
-      <div style="font-size:12px;color:var(--text-muted)">
-        บัญชีใหม่ต้องรอผู้ดูแลระบบอนุมัติก่อนจึงจะเข้าใช้งานได้<br/>
-        ผู้ดูแลระบบเริ่มต้น: <span class="mono">admin</span>
-      </div>
+      <div style="font-size:12px;color:var(--text-muted)">สมัครด้วยอีเมล → รอผู้ดูแลระบบอนุมัติ → เข้าสู่ระบบด้วยรหัส OTP ที่ส่งทางอีเมล<br/>ข้อมูลทุกคนเห็นชุดเดียวกัน (ผู้นำเข้าข้อมูล: Manager)</div>
     </div>
   </div>
 
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
 <script>
-  // ถ้า login ค้างอยู่แล้ว ให้พาไป dashboard ทันที
-  if (getSession()) window.location.href = "dashboard.html";
+  if (getSession()) window.location.href = "operations.html";
+  document.getElementById("loginKey").value = getApiKey();
+  document.getElementById("regKey").value = getApiKey();
+  let pendingEmail = "";
+
+  function show(id, on) { document.getElementById(id).style.display = on ? "block" : "none"; }
 
   function switchTab(tab) {
     document.getElementById("tabLogin").classList.toggle("active", tab === "login");
     document.getElementById("tabRegister").classList.toggle("active", tab === "register");
-    document.getElementById("loginForm").style.display = tab === "login" ? "block" : "none";
-    document.getElementById("registerForm").style.display = tab === "register" ? "block" : "none";
+    show("loginForm", tab === "login");
+    show("otpForm", false);
+    show("registerForm", tab === "register");
     document.getElementById("cardTitle").textContent = tab === "login" ? "เข้าสู่ระบบ" : "สมัครสมาชิก";
+    document.getElementById("msgBox").innerHTML = "";
+  }
+
+  function backToEmail() {
+    show("otpForm", false); show("loginForm", true);
     document.getElementById("msgBox").innerHTML = "";
   }
 
@@ -72,32 +92,47 @@
     document.getElementById("msgBox").innerHTML = `<div class="msg ${type}">${text}</div>`;
   }
 
-  async function handleLogin(e) {
+  async function handleRequestOtp(e) {
+    e.preventDefault();
+    const btn = e.target.querySelector("button");
+    btn.disabled = true; btn.textContent = "กำลังส่งรหัส...";
+    const email = document.getElementById("loginEmail").value.trim();
+    const key = document.getElementById("loginKey").value.trim();
+    const res = await doRequestOtp(email, key);
+    btn.disabled = false; btn.textContent = "ขอรหัส OTP ทางอีเมล";
+    if (res.ok) {
+      pendingEmail = email;
+      document.getElementById("otpEmailLabel").textContent = email;
+      show("loginForm", false); show("otpForm", true);
+      document.getElementById("otpCode").focus();
+      showMsg(res.message, "success");
+    } else {
+      showMsg(res.error || "ขอรหัสไม่สำเร็จ", "error");
+    }
+  }
+
+  async function handleVerifyOtp(e) {
     e.preventDefault();
     const btn = e.target.querySelector("button");
     btn.disabled = true; btn.textContent = "กำลังตรวจสอบ...";
-    const username = document.getElementById("loginUsername").value.trim();
-    const password = document.getElementById("loginPassword").value;
-    const res = await doLogin(username, password);
-    btn.disabled = false; btn.textContent = "เข้าสู่ระบบ";
-    if (res.ok) {
-      window.location.href = "dashboard.html";
-    } else {
-      showMsg(res.error || "เข้าสู่ระบบไม่สำเร็จ", "error");
-    }
+    const res = await doVerifyOtp(pendingEmail, document.getElementById("otpCode").value.trim(), getApiKey());
+    btn.disabled = false; btn.textContent = "ยืนยันและเข้าสู่ระบบ";
+    if (res.ok) window.location.href = "operations.html";
+    else showMsg(res.error || "รหัสไม่ถูกต้อง", "error");
   }
 
   async function handleRegister(e) {
     e.preventDefault();
     const btn = e.target.querySelector("button");
     btn.disabled = true; btn.textContent = "กำลังส่งคำขอ...";
-    const username = document.getElementById("regUsername").value.trim();
-    const password = document.getElementById("regPassword").value;
-    const res = await doRegister(username, password);
-    btn.disabled = false; btn.textContent = "ส่งคำขอสมัครสมาชิก";
+    const res = await doRegister(
+      document.getElementById("regEmail").value.trim(),
+      document.getElementById("regName").value.trim(),
+      document.getElementById("regKey").value.trim());
+    btn.disabled = false; btn.textContent = "ส่งคำขออนุมัติเข้าใช้งาน";
     if (res.ok) {
-      showMsg(res.message || "สมัครสำเร็จ รอการอนุมัติ", "success");
-      document.getElementById("registerForm").reset();
+      showMsg(res.message || "ส่งคำขอแล้ว รอการอนุมัติ", "success");
+      document.getElementById("regEmail").value = ""; document.getElementById("regName").value = "";
     } else {
       showMsg(res.error || "สมัครไม่สำเร็จ", "error");
     }

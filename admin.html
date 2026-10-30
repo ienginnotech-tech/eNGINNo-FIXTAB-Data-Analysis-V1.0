@@ -27,9 +27,15 @@
 
       <div class="card">
         <h3>ผู้ใช้งานระบบ</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <input type="email" id="newEmail" placeholder="อีเมลที่จะเพิ่ม (อนุมัติทันที)" style="flex:2;min-width:200px" />
+          <input type="text" id="newName" placeholder="ชื่อ" style="flex:1;min-width:120px" />
+          <select id="newRole"><option value="user">user (ดูอย่างเดียว)</option><option value="manager">manager (นำเข้าข้อมูล)</option><option value="admin">admin</option></select>
+          <button class="btn small" onclick="addUserFromForm()">+ เพิ่มผู้ใช้</button>
+        </div>
         <div style="overflow:auto">
           <table id="tblUsers">
-            <thead><tr><th>ชื่อผู้ใช้</th><th>บทบาท</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
+            <thead><tr><th>อีเมล</th><th>ชื่อ</th><th>บทบาท</th><th>สถานะ</th><th>เข้าล่าสุด</th><th>จัดการ</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
