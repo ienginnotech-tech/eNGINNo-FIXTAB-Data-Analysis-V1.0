@@ -5,7 +5,7 @@
 const NAV_ITEMS = [
   { href: "operations.html", label: "Work Request", icon: "🛠️" },
   { href: "dashboard.html", label: "CAPEX/OPEX Analysis", icon: "📊" },
-  { href: "import.html", label: "นำเข้าข้อมูล", icon: "📥" },
+  { href: "import.html", label: "นำเข้าข้อมูล", icon: "📥", uploaderOnly: true },
   { href: "admin.html", label: "Admin Management", icon: "🛡️", adminOnly: true },
   { href: "settings.html", label: "ตั้งค่า", icon: "⚙️" },
 ];
@@ -24,7 +24,7 @@ function renderShell(activeHref) {
         <nav class="sidebar-nav" id="sidebarNav"></nav>
         <div class="sidebar-foot">
           <div class="user-chip">
-            <span>👤 ${session.username} <span class="mono" style="color:var(--text-muted)">(${session.role})</span></span>
+            <span>👤 ${session.name || session.username} <span class="mono" style="color:var(--text-muted)">(${session.role})</span></span>
           </div>
           <button class="btn secondary small" style="margin-top:10px;width:100%" onclick="doLogout()">ออกจากระบบ</button>
         </div>
@@ -37,6 +37,7 @@ function renderShell(activeHref) {
   const nav = document.getElementById("sidebarNav");
   NAV_ITEMS.forEach((item) => {
     if (item.adminOnly && session.role !== "admin") return;
+    if (item.uploaderOnly && session.role === "user") return;
     const a = document.createElement("a");
     a.href = item.href;
     a.className = item.href === activeHref ? "active" : "";
